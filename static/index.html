@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POD Go Patch Agent</title>
+<style>
+  :root{
+    --bg:#0f0f0f; --panel:#1a1a1a; --panel2:#242424; --line:#383838;
+    --ink:#f0f0f0; --ink-dim:#888888; --accent:#e6001a; --accent-soft:#2a0008;
+    --ok:#4ca832; --ok-bg:#0d1f09; --warn:#c88a30; --warn-bg:#1e1408;
+    --amp:#e08844; --cab:#c4a830; --drive:#dd5544; --delay:#4499dd;
+    --reverb:#8855cc; --mod:#44aa66; --comp:#88aa44; --eq:#5577aa;
+    --pitch:#aa5588; --util:#888888; --wah:#9966cc; --pre:#bb7744;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,
+    BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; height:100vh;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; padding:12px 18px;
+    border-bottom:1px solid var(--line); background:var(--panel);
+  }
+  header h1{font-size:16px; margin:0; font-weight:650; letter-spacing:.2px}
+  header h1 .pick{color:var(--accent)}
+  header .sub{color:var(--ink-dim); font-size:12.5px}
+  header .spacer{flex:1}
+  .modelbox{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-dim)}
+  .modelbox input{
+    background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:7px; padding:5px 9px; font-size:12.5px; width:140px; font-family:inherit;
+  }
+  .status{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-dim)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ink-dim)}
+  .dot.ok{background:var(--ok)} .dot.err{background:var(--drive)}
+
+  main{flex:1; display:flex; min-height:0}
+  .chat{flex:1; display:flex; flex-direction:column; min-width:0}
+  .thread{flex:1; overflow-y:auto; padding:22px 26px; display:flex; flex-direction:column; gap:16px}
+  .msg{max-width:760px; display:flex; flex-direction:column; gap:8px}
+  .msg.user{align-self:flex-end; align-items:flex-end}
+  .bubble{padding:11px 15px; border-radius:14px; white-space:pre-wrap}
+  .user .bubble{background:var(--accent-soft); border:1px solid #5a0010; border-bottom-right-radius:4px}
+  .bot .bubble{background:var(--panel2); border:1px solid var(--line); border-bottom-left-radius:4px}
+  .changes{display:flex; flex-direction:column; gap:4px; max-width:760px}
+  .chg{font-size:12.5px; padding:5px 10px; border-radius:8px; font-family:ui-monospace,
+       SFMono-Regular,Menlo,monospace}
+  .chg.ok{background:var(--ok-bg); color:var(--ok); border:1px solid #2c3a22}
+  .chg.no{background:var(--warn-bg); color:var(--warn); border:1px solid #3a2f12}
+  .hint{color:var(--ink-dim); font-size:13px; max-width:760px}
+  .err{background:#2a1512; border:1px solid #5a2a22; color:#e8a89a; padding:11px 15px;
+       border-radius:12px; max-width:760px; font-size:13.5px}
+
+  .composer{border-top:1px solid var(--line); padding:14px 20px; background:var(--panel); display:flex; gap:10px}
+  .composer textarea{
+    flex:1; resize:none; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:11px; padding:11px 13px; font:inherit; min-height:46px; max-height:160px;
+  }
+  .composer button, .side button, .filebtn{
+    background:var(--accent); color:#ffffff; border:none; border-radius:10px; padding:0 18px;
+    font:inherit; font-weight:650; cursor:pointer; height:46px;
+  }
+  .composer button:disabled{opacity:.5; cursor:default}
+  button.ghost,.filebtn{background:var(--panel2); color:var(--ink); border:1px solid var(--line); font-weight:550}
+
+  .side{width:340px; border-left:1px solid var(--line); background:var(--panel);
+        display:flex; flex-direction:column; min-height:0}
+  .side .head{padding:14px 16px 8px; border-bottom:1px solid var(--line)}
+  .preset-name{font-weight:650; font-size:15px}
+  .preset-meta{color:var(--ink-dim); font-size:12.5px; margin-top:2px}
+  .chain{flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:7px}
+  .block{display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:10px;
+         background:var(--panel2); border:1px solid var(--line)}
+  .block.off{opacity:.45}
+  .block.empty{opacity:.2; border-style:dashed}
+  .swatch{width:9px; height:32px; border-radius:3px; flex:none; background:var(--util)}
+  .block .nm{font-weight:600; font-size:13.5px}
+  .block .rl{color:var(--ink-dim); font-size:11.5px}
+  .block .cat{margin-left:auto; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;
+              color:var(--ink-dim); flex:none}
+  .block .byp{font-size:10.5px; color:var(--warn); margin-left:auto}
+  .side .actions{padding:12px 14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:9px}
+  .row{display:flex; gap:9px}
+  .row > *{flex:1}
+  .dl{background:var(--accent); color:#ffffff; font-weight:650; text-align:center; text-decoration:none;
+      border-radius:10px; padding:12px 0; display:block}
+  .dl.disabled{opacity:.45; pointer-events:none}
+  .filebtn{display:inline-flex; align-items:center; justify-content:center; cursor:pointer; height:42px}
+  .filebtn input{display:none}
+  .side button.ghost{height:42px}
+  .seed{color:var(--ink-dim); font-size:12px; padding:0 14px 12px; line-height:1.45}
+  code{background:#000a; padding:1px 5px; border-radius:4px; font-size:12px}
+  .typing{display:flex;align-items:center;gap:5px;padding:4px 2px}
+  .typing span{width:6px;height:6px;border-radius:50%;background:var(--ink-dim);
+    animation:dotPulse 1.2s ease-in-out infinite}
+  .typing span:nth-child(2){animation-delay:.2s}
+  .typing span:nth-child(3){animation-delay:.4s}
+  @keyframes dotPulse{
+    0%,60%,100%{transform:translateY(0);opacity:.35}
+    30%{transform:translateY(-5px);opacity:1}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="pick">◗</span> POD Go Patch Agent</h1>
+  <span class="sub">local · Ollama</span>
+  <div class="spacer"></div>
+  <div class="modelbox">model <input id="model" value="llama3.1:8b" spellcheck="false"></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">checking…</span></div>
+</header>
+
+<main>
+  <section class="chat">
+    <div class="thread" id="thread"></div>
+    <div class="composer">
+      <textarea id="input" placeholder="Describe a tone or a change — e.g. &ldquo;warm blackface clean with a little spring&rdquo; or &ldquo;too muddy, tighten the low end&rdquo;"></textarea>
+      <button id="build">Build</button>
+      <button id="send">Send</button>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="head">
+      <div class="preset-name" id="pName">—</div>
+      <div class="preset-meta" id="pMeta"></div>
+    </div>
+    <div class="chain" id="chain"></div>
+    <div class="seed" id="seed"></div>
+    <div class="actions">
+      <a class="dl disabled" id="dl" style="display:none">Download .pgp</a>
+      <div class="row">
+        <button class="ghost" id="btnNew">Build From Scratch</button>
+        <label class="filebtn">Upload .pgp<input type="file" id="file" accept=".pgp,.json"></label>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const SWATCH = {Amp:'--amp',Cab:'--cab',Drive:'--drive',Delay:'--delay',Reverb:'--reverb',
+  Mod:'--mod',Comp:'--comp',EQ:'--eq',Pitch:'--pitch',Wah:'--wah',Preamp:'--pre',Utility:'--util'};
+let sid = null, busy = false;
+
+const $ = s => document.querySelector(s);
+const thread = $('#thread');
+
+function add(role, text){
+  const m = document.createElement('div');
+  m.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  const b = document.createElement('div');
+  b.className = 'bubble'; b.textContent = text;
+  m.appendChild(b); thread.appendChild(m); thread.scrollTop = thread.scrollHeight;
+  return m;
+}
+function addChanges(applied, rejected, stagger=false){
+  if(!applied.length && !rejected.length) return;
+  const wrap = document.createElement('div'); wrap.className = 'changes';
+  thread.appendChild(wrap);
+  const all = [...applied.map(t=>({t,ok:true})), ...rejected.map(t=>({t,ok:false}))];
+  all.forEach(({t, ok}, i) => {
+    const delay = stagger ? i * 130 : 0;
+    setTimeout(() => {
+      const c = document.createElement('div');
+      c.className = 'chg ' + (ok ? 'ok' : 'no');
+      c.textContent = (ok ? '✓ ' : '⊘ ') + t;
+      wrap.appendChild(c); thread.scrollTop = thread.scrollHeight;
+    }, delay);
+  });
+}
+function addErr(text){
+  const e=document.createElement('div'); e.className='err'; e.textContent=text;
+  thread.appendChild(e); thread.scrollTop = thread.scrollHeight;
+}
+function addHint(text){
+  const h=document.createElement('div'); h.className='hint'; h.textContent=text; thread.appendChild(h);
+}
+
+function renderChain(p){
+  $('#pName').textContent = p.name || '—';
+  const meta = [];
+  if(p.tempo) meta.push(p.tempo + ' BPM');
+  if(p.snapshots && p.snapshots.length) meta.push(p.snapshots.length + ' snapshot' + (p.snapshots.length>1?'s':''));
+  $('#pMeta').textContent = meta.join('  ·  ');
+  const c = $('#chain'); c.innerHTML = '';
+  (p.blocks||[]).forEach(b => {
+    const el = document.createElement('div');
+    el.className = 'block' + (b.enabled ? '' : ' off');
+    const sw = document.createElement('div'); sw.className='swatch';
+    sw.style.background = `var(${SWATCH[b.category]||'--util'})`;
+    const txt = document.createElement('div');
+    txt.innerHTML = `<div class="nm">${b.name}</div>` + (b.based_on?`<div class="rl">${b.based_on}</div>`:'');
+    const tag = document.createElement('div');
+    tag.className = b.enabled ? 'cat' : 'byp';
+    tag.textContent = b.enabled ? b.category : 'bypassed';
+    el.append(sw, txt, tag); c.appendChild(el);
+  });
+}
+
+const BUILD_SLOTS = [
+  {cat:'Drive'}, {cat:'Comp'}, {cat:'Amp'}, {cat:'Cab'},
+  {cat:'EQ'}, {cat:'Delay'}, {cat:'Reverb'},
+];
+function renderBuildCanvas(){
+  $('#pName').textContent = 'New Preset';
+  $('#pMeta').textContent = '';
+  const c = $('#chain'); c.innerHTML = '';
+  BUILD_SLOTS.forEach(({cat}) => {
+    const el = document.createElement('div'); el.className = 'block empty';
+    const sw = document.createElement('div'); sw.className = 'swatch';
+    sw.style.background = `var(${SWATCH[cat]||'--util'})`;
+    const txt = document.createElement('div');
+    txt.innerHTML = `<div class=”nm”>${cat}</div>`;
+    const tag = document.createElement('div'); tag.className = 'cat';
+    tag.textContent = cat;
+    el.append(sw, txt, tag); c.appendChild(el);
+  });
+}
+function setMode(mode){
+  $('#build').style.display   = mode === 'build' ? '' : 'none';
+  $('#send').style.display    = mode === 'edit'  ? '' : 'none';
+  $('#btnNew').style.display  = mode === 'edit'  ? '' : 'none';
+  $('#input').placeholder = mode === 'build'
+    ? 'Describe the tone you want to build — e.g. “classic rock crunch with long reverb”'
+    : 'Describe what to change — e.g. “too muddy, tighten the low end” or “more gain”';
+  if(mode === 'build') renderBuildCanvas();
+  updateSeed(mode);
+}
+
+async function startNew(){
+  const r = await fetch('/api/new', {method:'POST'});
+  const p = await r.json(); sid = p.session_id;
+  thread.innerHTML=''; setMode('build');
+  addHint('Describe the tone you want to build. The agent will configure the amp, cab, and effects from scratch.');
+}
+async function uploadFile(f){
+  const fd = new FormData(); fd.append('file', f);
+  const r = await fetch('/api/upload', {method:'POST', body:fd});
+  if(!r.ok){ const e=await r.json(); addErr(e.detail||'Upload failed'); return; }
+  const p = await r.json(); sid = p.session_id; renderChain(p);
+  thread.innerHTML=''; setMode('edit');
+  addHint(`Loaded "${p.name}" from ${p.filename}. Tell me what to change — e.g. "more gain and tighten the lows" or "add some ambience."`);
+}
+
+async function sendMessage(text, buildMode=false){
+  if(!text || busy || !sid) return;
+  $('#input').value=''; add('user', text); busy=true;
+  $('#send').disabled=true; $('#build').disabled=true;
+  const pending = add('bot', '');
+  pending.querySelector('.bubble').innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  try{
+    const r = await fetch('/api/chat', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id:sid, message:text, model:$('#model').value.trim(), build:buildMode})});
+    if(!r.ok){
+      const e = await r.json(); pending.remove(); addErr(e.detail || 'Request failed');
+    } else {
+      const d = await r.json();
+      const applied = d.applied||[], rejected = d.rejected||[];
+      const hasChanges = applied.length || rejected.length;
+      pending.querySelector('.bubble').textContent = hasChanges
+        ? (applied.length
+            ? (buildMode ? "Here's what I built:" : "Here's what changed:")
+            : "Nothing could be applied:")
+        : d.reply;
+      addChanges(applied, rejected, buildMode);
+      renderChain(d);
+      if(d.build_complete) setMode('edit');
+      const dl = $('#dl'); dl.href = '/api/download/' + sid; dl.style.display = ''; dl.classList.remove('disabled');
+    }
+  }catch(err){ pending.remove(); addErr('Network error: '+err.message); }
+  busy=false; $('#send').disabled=false; $('#build').disabled=false; $('#input').focus();
+}
+async function send(){ sendMessage($('#input').value.trim(), false); }
+async function buildPatch(){
+  const text = $('#input').value.trim();
+  if(!text || busy) return;
+  if(!sid){ const r=await fetch('/api/new',{method:'POST'}); const p=await r.json(); sid=p.session_id; }
+  thread.innerHTML='';
+  sendMessage(text, true);
+}
+
+async function health(){
+  try{
+    const r = await fetch('/api/health'); const d = await r.json();
+    $('#dot').className='dot ok'; $('#statusTxt').textContent='server ready';
+    if(d.default_model) $('#model').value = d.default_model;
+  }catch{ $('#dot').className='dot err'; $('#statusTxt').textContent='server down'; }
+}
+
+$('#send').addEventListener('click', send);
+$('#build').addEventListener('click', buildPatch);
+$('#input').addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); $('#send').style.display==='none' ? buildPatch() : send(); }});
+$('#btnNew').addEventListener('click', startNew);
+$('#file').addEventListener('change', e => { if(e.target.files[0]) uploadFile(e.target.files[0]); e.target.value=''; });
+function updateSeed(mode) {
+  $('#seed').textContent = mode === 'build'
+    ? 'Tip: upload any preset from your POD Go first — the build agent will use its amp and cab as a device-verified starting point.'
+    : 'Tip: model swaps work best once you\u2019ve fed it a few of your own presets — parameter tweaks and bypass toggles are always exact.';
+}
+
+health().then(startNew);
+</script>
+</body>
+</html>
