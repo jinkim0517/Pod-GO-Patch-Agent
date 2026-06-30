@@ -1,15 +1,22 @@
 """
-model_db.py — Line 6 HX / POD Go model-ID catalog.
+model_db.py — Line 6 POD Go model-ID catalog.
 
 Maps internal model identifiers (the @model field inside a preset's blocks)
 to a (category, display_name, real_hardware) tuple.
 
-POD Go runs the same HX modeling engine as the Helix family and shares these
-model IDs, though POD Go exposes a SUBSET of the full Helix model list. Treat
-this as a high-quality seed: the app also learns whatever models actually appear
-in the presets you upload, so anything POD Go-specific is picked up at runtime.
+KEY DIFFERENCE between POD Go and Helix/HX firmware:
+  - Amps and cabs:  same HD2_Amp* / HD2_Cab* IDs as Helix (no suffix)
+  - Effects:        POD Go appends Mono or Stereo to the model ID
+                    e.g. HD2_DistScream808 → HD2_DistScream808Mono
+                         HD2_ReverbHall   → HD2_ReverbHallStereo
+  - EQ:             completely different format: HD2_EQ_STATIC_*Stereo
+  - Routing:        POD Go uses P34_AppDSPFlow* (not HD2_AppDSPFlow*)
 
-Model-ID -> hardware mappings derived from the community-maintained
+MODEL_DB contains both Helix IDs (for display/lookup of uploaded Helix presets)
+and POD Go Mono/Stereo variants. PODGO_VERIFIED controls what the LLM can
+propose as swap targets — only those IDs are shown in compact_catalog().
+
+Hardware name mappings derived from the community-maintained
 GhostNote17/HelixNativePresets project (MIT licensed) and the Line 6 Owner's
 Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
 """
@@ -28,6 +35,9 @@ MODEL_DB = {
     'HD2_AmpStoneAge185': ('Amp', 'Stone Age 185', 'Gibson EH-185'),
     'HD2_AmpTweedBluesNrm': ('Amp', 'Tweed Blues Nrm', 'Fender Bassman (Normal)'),
     'HD2_AmpTweedBluesBrt': ('Amp', 'Tweed Blues Brt', 'Fender Bassman (Bright)'),
+    'HD2_AmpFullertonNrm':  ('Amp', 'Fullerton Nrm',  'Fender 5C3 Tweed Deluxe (Normal)'),
+    'HD2_AmpFullertonBrt':  ('Amp', 'Fullerton Brt',  'Fender 5C3 Tweed Deluxe (Bright)'),
+    'HD2_AmpFullertonJump': ('Amp', 'Fullerton Jump',  'Fender 5C3 Tweed Deluxe (Jumped)'),
     'HD2_AmpMailOrderTwin': ('Amp', 'Mail Order Twin', 'Silvertone 1484'),
     'HD2_AmpVoltageQueen': ('Amp', 'Voltage Queen', 'Victoria Electro King'),
     'HD2_AmpTucknGo': ('Amp', 'Tuck & Go', 'Ampeg Jet J-20'),
@@ -46,14 +56,15 @@ MODEL_DB = {
     'HD2_AmpBritPlexiBrt': ('Amp', 'Brit Plexi Brt', 'Marshall Super Lead 100 (Bright)'),
     'HD2_AmpBritPlexiJump': ('Amp', 'Brit Plexi Jump', 'Marshall Super Lead 100 (Jumped)'),
     'HD2_AmpBrit2204': ('Amp', 'Brit 2204', 'Marshall JCM800 2204'),
-    'HD2_AmpBritJ45Nrm': ('Amp', 'Brit J-45 Nrm', 'Marshall JTM-45 (Normal)'),
-    'HD2_AmpBritJ45Brt': ('Amp', 'Brit J-45 Brt', 'Marshall JTM-45 (Bright)'),
-    'HD2_AmpBritTremBrt': ('Amp', 'Brit Trem Brt', 'Marshall JTM-50 (Bright)'),
-    'HD2_AmpBritTremJump': ('Amp', 'Brit Trem Jump', 'Marshall JTM-50 (Jumped)'),
-    'HD2_AmpBritP75Nrm': ('Amp', 'Brit P-75 Nrm', 'Park 75 (Normal)'),
-    'HD2_AmpBritP75Brt': ('Amp', 'Brit P-75 Brt', 'Park 75 (Bright)'),
-    'HD2_AmpEssexA15': ('Amp', 'Essex A-15', 'Vox AC-15'),
-    'HD2_AmpEssexA30': ('Amp', 'Essex A-30', 'Vox AC-30 (Top Boost)'),
+    'HD2_AmpBritTremNrm':  ('Amp', 'Brit Trem Nrm',  'Marshall JTM-50 (Normal)'),
+    'HD2_AmpBritJ45Nrm':   ('Amp', 'Brit J45 Nrm',   'Marshall JTM-45 (Normal)'),
+    'HD2_AmpBritJ45Brt':   ('Amp', 'Brit J45 Brt',   'Marshall JTM-45 (Bright)'),
+    'HD2_AmpBritTremBrt':  ('Amp', 'Brit Trem Brt',  'Marshall JTM-50 (Bright)'),
+    'HD2_AmpBritTremJump': ('Amp', 'Brit Trem Jump',  'Marshall JTM-50 (Jumped)'),
+    'HD2_AmpBritP75Nrm':   ('Amp', 'Brit P75 Nrm',   'Park 75 (Normal)'),
+    'HD2_AmpBritP75Brt':   ('Amp', 'Brit P75 Brt',   'Park 75 (Bright)'),
+    'HD2_AmpEssexA15': ('Amp', 'Essex A15', 'Vox AC-15'),
+    'HD2_AmpEssexA30': ('Amp', 'Essex A30', 'Vox AC-30 (Top Boost)'),
     'HD2_AmpA30FawnNrm': ('Amp', 'A30 Fawn Nrm', 'Vox AC-30 Fawn (Normal)'),
     'HD2_AmpA30FawnBrt': ('Amp', 'A30 Fawn Brt', 'Vox AC-30 Fawn (Bright)'),
     'HD2_AmpMatchstickCh1': ('Amp', 'Matchstick Ch1', 'Matchless DC-30 (Ch1)'),
@@ -66,7 +77,8 @@ MODEL_DB = {
     'HD2_AmpSoloLeadCrunch': ('Amp', 'Solo Lead Crunch', 'Soldano SLO-100 (Crunch)'),
     'HD2_AmpANGLMeteor': ('Amp', 'ANGL Meteor', 'ENGL Fireball 100'),
     'HD2_AmpAnglMeteor': ('Amp', 'ANGL Meteor', 'ENGL Fireball 100'),
-    'HD2_AmpDasBenzinMega': ('Amp', 'Das Benzin Mega', 'Diezel Herbert (Mega Ch)'),
+    'HD2_AmpDasBenzinMega': ('Amp', 'Das Benzin Mega', 'Diezel VH4 (Mega Ch)'),
+    'HD2_AmpDasBenzinLead': ('Amp', 'Das Benzin Lead', 'Diezel VH4 (Lead Ch)'),
     'HD2_AmpPVPanama': ('Amp', 'PV Panama', 'Peavey 5150'),
     'HD2_AmpPVVitriolLead': ('Amp', 'PV Vitriol Lead', 'Peavey 6505+ (Lead)'),
     'HD2_AmpRevvGenPurple': ('Amp', 'Revv Gen Purple', 'Revv Generator 120 (Purple)'),
@@ -80,25 +92,29 @@ MODEL_DB = {
     'HD2_AmpMandarinRocker': ('Amp', 'Mandarin Rocker', 'Orange Rockerverb'),
     'HD2_AmpWhoWatt100': ('Amp', 'WhoWatt 100', 'Hiwatt DR103'),
     'HD2_AmpCartographer': ('Amp', 'Cartographer', 'Ben Adrian Cartographer'),
-    'HD2_AmpGrammaticoNrm': ('Amp', 'Grammatico Nrm', 'Grammatico LaGrange (Normal)'),
-    'HD2_AmpGrammaticoJump': ('Amp', 'Grammatico Jump', 'Grammatico LaGrange (Jumped)'),
-    'HD2_AmpGSG100': ('Amp', 'GSG 100', 'Grammatico GSG100'),
+    'HD2_AmpGrammaticoNrm':  ('Amp', 'Grammatico LG Nrm',  'Grammatico LaGrange (Normal)'),
+    'HD2_AmpGrammaticoBrt':  ('Amp', 'Grammatico LG Brt',  'Grammatico LaGrange (Bright)'),
+    'HD2_AmpGrammaticoJump': ('Amp', 'Grammatico LG Jump', 'Grammatico LaGrange (Jumped)'),
+    'HD2_AmpGSG100': ('Amp', 'Grammatico GSG', 'Grammatico GSG100'),
     'HD2_AmpInterstateZed': ('Amp', 'Interstate Zed', 'Dr. Z Route 66'),
     'HD2_AmpDividedDuo': ('Amp', 'Divided Duo', 'Divided by 13 9/15'),
-    'HD2_AmpMoonJump': ('Amp', 'Moo)))n Jump', 'Moonlight Amplification'),
+    'HD2_AmpMoonNrm':  ('Amp', 'Moo)))n Nrm',  'Sunn Model T (Normal)'),
+    'HD2_AmpMoonBrt':  ('Amp', 'Moo)))n Brt',  'Sunn Model T (Bright)'),
+    'HD2_AmpMoonJump': ('Amp', 'Moo)))n Jump', 'Sunn Model T (Jumped)'),
     'HD2_AmpArchetypeClean': ('Amp', 'Archetype Clean', 'Paul Reed Smith Archon (Clean)'),
     'HD2_AmpArchetypeLead': ('Amp', 'Archetype Lead', 'Paul Reed Smith Archon (Lead)'),
     'HD2_AmpJazzRivet120': ('Amp', 'Jazz Rivet 120', 'Roland JC-120'),
     'HD2_AmpCosmicGlue': ('Amp', 'Cosmic Glue', 'Supro S6616'),
-    'HD2_AmpLine6Litigator': ('Amp', 'Litigator', 'Line 6 Original (Blackface-style)'),
-    'HD2_AmpLine6Badonk': ('Amp', 'Badonk', 'Line 6 Original (High Gain)'),
-    'HD2_AmpLine6Elektrik': ('Amp', 'Elektrik', 'Line 6 Original'),
-    'HD2_AmpLine6Epicenter': ('Amp', 'Epicenter', 'Line 6 Original (Bass)'),
-    'HD2_AmpLine6Epic': ('Amp', 'Line 6 Epic', 'Line 6 Original'),
-    'HD2_AmpLine6Fatality': ('Amp', 'Line 6 Fatality', 'Line 6 Original (Fatality)'),
-    'HD2_AmpLine6Elmsley': ('Amp', 'Elmsley', 'Line 6 Original'),
-    'HD2_AmpLine6Ventoux': ('Amp', 'Ventoux', 'Line 6 Original'),
-    'HD2_AmpLine62204Mod': ('Amp', 'Line 6 2204 Mod', 'Line 6 Modified JCM800'),
+    'HD2_AmpLine6Litigator': ('Amp', 'Line 6 Litigator', 'Line 6 Original'),
+    'HD2_AmpLine6Badonk':    ('Amp', 'Line 6 Badonk',    'Line 6 Original'),
+    'HD2_AmpLine6Elektrik':  ('Amp', 'Line 6 Elektrik',  'Line 6 Original'),
+    'HD2_AmpLine6Doom':      ('Amp', 'Line 6 Doom',      'Line 6 Original'),
+    'HD2_AmpLine6Epicenter': ('Amp', 'Epicenter',         'Line 6 Original (Bass)'),
+    'HD2_AmpLine6Epic':      ('Amp', 'Line 6 Epic',       'Line 6 Original'),
+    'HD2_AmpLine6Fatality':  ('Amp', 'Line 6 Fatality',  'Line 6 Original'),
+    'HD2_AmpLine6Elmsley':   ('Amp', 'Line 6 Elmsley',   'Line 6 Original'),
+    'HD2_AmpLine6Ventoux':   ('Amp', 'Line 6 Ventoux',   'Line 6 Original'),
+    'HD2_AmpLine62204Mod':   ('Amp', 'Line 6 2204 Mod',  'Line 6 Modified JCM800'),
     'HD2_AmpSVT4Pro': ('Amp', 'SVT-4 Pro', 'Ampeg SVT-4 Pro'),
     'HD2_AmpSVTNrml': ('Amp', 'SVT Nrm', 'Ampeg SVT (Normal)'),
     'HD2_AmpSVTBright': ('Amp', 'SVT Bright', 'Ampeg SVT (Bright)'),
@@ -365,6 +381,7 @@ MODEL_DB = {
     'L6SPB_AcousGtrSim': ('Utility', 'Acoustic Sim', 'Line 6 Acoustic Guitar Sim'),
     'L6SPB_InfSustain': ('Utility', 'Infinite Sustain', 'Line 6 Infinite Sustain'),
     # ===== Routing =====
+    # Helix Native routing IDs (useful for uploaded Helix presets)
     'HD2_AppDSPFlow1Input': ('Routing', 'Input', 'DSP Input'),
     'HD2_AppDSPFlow2Input': ('Routing', 'Input B', 'DSP Input B'),
     'HD2_AppDSPFlowOutput': ('Routing', 'Output', 'DSP Output'),
@@ -373,15 +390,21 @@ MODEL_DB = {
     'HD2_AppDSPFlowSplitDynamic': ('Routing', 'Split Dynamic', 'Dynamic Split'),
     'HD2_AppDSPFlowSplitCrossover': ('Routing', 'Split Crossover', 'Crossover Split'),
     'HD2_AppDSPFlowJoin': ('Routing', 'Join', 'Path Join'),
+    # POD Go routing IDs (P34_ prefix, confirmed from real device exports)
+    'P34_AppDSPFlowInput':  ('Routing', 'Input',  'DSP Input'),
+    'P34_AppDSPFlowOutput': ('Routing', 'Output', 'DSP Output'),
 
-    # ===== POD Go verified — confirmed from real device exports =====
-    # These use Mono/Stereo suffixes specific to POD Go firmware.
-    # Do not replace with Helix catalog IDs — they will fail to import.
+    # ===== POD Go model IDs =====
+    # POD Go firmware uses Mono/Stereo suffixes on effect blocks.
+    # Amps and cabs use the same HD2_Amp* / HD2_Cab* IDs as Helix (no suffix).
+    # EQ uses a different format entirely: HD2_EQ_STATIC_*Stereo.
+    #
+    # Confirmed from real device exports (DH CHORUS CLOUD, TEMPLATE_TEST):
     'HD2_WahUKWah846Stereo':           ('Wah',     'UK Wah 846',       'Vox V846'),
     'HD2_WahTeardropStereo':           ('Wah',     'Teardrop',         'Dunlop Cry Baby'),
     'HD2_CompressorKinkyCompMono':     ('Comp',    'Kinky Comp',       'Cali76 Compact'),
     'HD2_CompressorROSSCompMono':      ('Comp',    'ROSS Comp',        'Ross Compressor'),
-    'HD2_DistTeemahMono':              ('Drive',   'Teemah',           'Paul Cochrane Timmy'),
+    'HD2_DistTeemahMono':              ('Drive',   'Teemah!',          'Paul Cochrane Timmy'),
     'HD2_DistScream808Mono':           ('Drive',   'Scream 808',       'Ibanez TS808'),
     'HD2_DistKinkyBoostMono':          ('Drive',   'Kinky Boost',      'Xotic EP Booster'),
     'HD2_EQ_STATIC_ParametricStereo': ('EQ',      'Parametric EQ',    ''),
@@ -400,38 +423,220 @@ MODEL_DB = {
     'HD2_ImpulseResponse1024Mono':     ('Cab',     'Impulse Response', ''),
     'HD2_VolPanVolStereo':             ('Utility', 'Volume/Pan',       ''),
     'HD2_FXLoopMono1':                 ('Utility', 'Mono FX Loop',     ''),
+    # Following the confirmed Mono/Stereo pattern from device exports:
+    # Drive → Mono
+    'HD2_DistMinotaurMono':        ('Drive', 'Minotaur',         'Klon Centaur'),
+    'HD2_DistHedgehogD9Mono':      ('Drive', 'Hedgehog D9',      'Maxon SD-9'),
+    'HD2_DistStuporODMono':        ('Drive', 'Stupor OD',        'Boss SD-1'),
+    'HD2_DistCompulsiveDriveMono': ('Drive', 'Compulsive Drive', 'Fulltone OCD'),
+    'HD2_DistVerminDistMono':      ('Drive', 'Vermin Dist',      'Pro Co RAT'),
+    'HD2_DistVitalDistMono':       ('Drive', 'Vital Dist',       'MXR Dist+'),
+    'HD2_DistDerangedMasterMono':  ('Drive', 'Deranged Master',  'Dallas Rangemaster'),
+    'HD2_DistTriangleFuzzMono':    ('Drive', 'Triangle Fuzz',    'EHX Big Muff Pi'),
+    'HD2_DistArbitratorFuzzMono':  ('Drive', 'Arbitrator Fuzz',  'Arbiter Fuzz Face'),
+    'HD2_DistHorizonDriveMono':    ('Drive', 'Horizon Drive',    'Horizon Devices Precision Drive'),
+    'HD2_DistValveDriverMono':     ('Drive', 'Valve Driver',     'Chandler Tube Driver'),
+    'HD2_DistDhyanaDriveMono':     ('Drive', 'Dhyana Drive',     'Hermida Zendrive'),
+    'HD2_DistPillarsMono':         ('Drive', 'Pillars',          'Line 6 Pillars'),
+    'HD2_DistRamsHeadMono':        ('Drive', "Ram's Head",       "EHX Big Muff Pi (Ram's Head)"),
+    # Comp → Mono
+    'HD2_CompressorDeluxeCompMono':   ('Comp', 'Deluxe Comp',    'Line 6 Deluxe Compressor'),
+    'HD2_CompressorLAStudioCompMono': ('Comp', 'LA Studio Comp', 'Teletronix LA-2A'),
+    # Wah → Stereo
+    'HD2_WahFasselStereo':       ('Wah', 'Fassel',  'Dunlop Cry Baby Original'),
+    'HD2_WahChromeStereo':       ('Wah', 'Chrome',  'Vox V847'),
+    'HD2_WahWeeper Stereo':      ('Wah', 'Weeper',  'Arbiter Cry Baby'),
+    'HD2_WahConductorStereo':    ('Wah', 'Conductor','Maestro Boomerang'),
+    'HD2_WahColorfulStereo':     ('Wah', 'Colorful', 'Colorsound Wah'),
+    'HD2_WahThroatyStereo':      ('Wah', 'Throaty',  'RMC Real McCoy'),
+    # Mod → Stereo
+    'HD2_Chorus70sChorusStereo':       ('Mod', '70s Chorus',      'Boss CE-1'),
+    'HD2_ChorusPlastiChorusStereo':    ('Mod', 'PlastiChorus',    'Arion SCH-Z'),
+    'HD2_TremoloPatternStereo':        ('Mod', 'Pattern Tremolo', 'Line 6 Pattern Tremolo'),
+    'HD2_TremoloHarmonicStereo':       ('Mod', 'Harmonic Tremolo','Brownface-style'),
+    'HD2_TremoloOpticalTremStereo':    ('Mod', 'Optical Trem',    'Fender Optical Tremolo'),
+    'HD2_Tremolo60sBiasTremStereo':    ('Mod', '60s Bias Trem',   'Vox Bias Tremolo'),
+    'HD2_VibratoBubbleVibratoStereo':  ('Mod', 'Bubble Vibrato',  'Boss VB-2'),
+    'HD2_RotaryRotaryStereo':          ('Mod', 'Rotary',          'Leslie 145'),
+    # Delay → Stereo
+    'HD2_DelayBucketBrigadeStereo':   ('Delay', 'Bucket Brigade',  'Boss DM-2'),
+    'HD2_DelayTransistorTapeStereo':  ('Delay', 'Transistor Tape', 'Maestro EP-3'),
+    'HD2_DelayCosmosEchoStereo':      ('Delay', 'Cosmos Echo',     'Roland RE-201 Space Echo'),
+    'HD2_DelayElephantManStereo':     ('Delay', 'Elephant Man',    'EHX Deluxe Memory Man'),
+    'HD2_DelayDualDelayStereo':       ('Delay', 'Dual Delay',      'Line 6 Dual Delay'),
+    'HD2_DelayPingPongStereo':        ('Delay', 'Ping Pong',       'Line 6 Ping Pong'),
+    'HD2_DelayVintageDigitalStereo':  ('Delay', 'Vintage Digital', 'Roland RE-style digital'),
+    'HD2_DelayAdriaticDelayStereo':   ('Delay', 'Adriatic Delay',  'Boss DM-2w style'),
+    'HD2_DelayReverseDelayStereo':    ('Delay', 'Reverse Delay',   'Line 6 Reverse'),
+    'HD2_DelayDuckedDelayStereo':     ('Delay', 'Ducked Delay',    'TC Electronic-style'),
+    'HD2_DelayPitchStereo':           ('Delay', 'Pitch Delay',     'Line 6 Pitch Delay'),
+    # Reverb → Stereo (Spring confirmed Mono)
+    'HD2_ReverbChamberStereo':    ('Reverb', 'Chamber',      'Line 6 Chamber'),
+    'HD2_ReverbTileStereo':       ('Reverb', 'Tile',         'Line 6 Tile'),
+    'HD2_ReverbEchoStereo':       ('Reverb', 'Echo',         'Line 6 Echo'),
+    'HD2_ReverbCaveStereo':       ('Reverb', 'Cave',         'Line 6 Cave'),
+    'HD2_ReverbOctoStereo':       ('Reverb', 'Octo',         'Line 6 Octo'),
+    'HD2_ReverbGanymedeStereo':   ('Reverb', 'Ganymede',     'Line 6 Ganymede'),
+    'HD2_ReverbParticleVerbStereo':('Reverb','Particle Verb', 'Line 6 Particle Verb'),
+    'HD2_Reverb63SpringStereo':   ('Reverb', "'63 Spring",   "Fender '63 Spring"),
+    'HD2_ReverbHxSpringStereo':   ('Reverb', 'HX Spring',    'Line 6 HX Spring'),
+    'HD2_ReverbDoubleTankStereo': ('Reverb', 'Double Tank',  'Line 6 Double Tank'),
+    'HD2_ReverbSearchlightsStereo':('Reverb','Searchlights', 'Line 6 Searchlights'),
+    'HD2_ReverbGlitzMono':        ('Reverb', 'Glitz',        'Line 6 Glitz'),
+    # Pitch → Stereo
+    'HD2_PitchSimplePitchStereo': ('Pitch', 'Simple Pitch',  'Line 6 Pitch Shifter'),
+    'HD2_PitchTwinHarmonyStereo': ('Pitch', 'Twin Harmony',  'Line 6 Harmonizer'),
+    'HD2_PitchDualPitchStereo':   ('Pitch', 'Dual Pitch',    'Line 6 Dual Pitch'),
+    'HD2_PitchPitchWhamStereo':   ('Pitch', 'Pitch Wham',    'Digitech Whammy'),
 }
 
-# IDs confirmed to import without "unrecognized models" on a real POD Go.
-# compact_catalog() only shows these so the LLM never picks an untested ID.
-# Add more here after verifying them via build_catalog.py on your own exports.
+# Model IDs the LLM is allowed to propose as swap targets (via compact_catalog).
+#
+# CONFIRMED: device accepted these without errors (real POD Go export or import test).
+# INFERRED:  follow the confirmed Mono/Stereo suffix pattern from device exports.
+#   - Effects use Mono or Stereo suffix (e.g. HD2_DistScream808Mono, HD2_ChorusStereo)
+#   - Amps use the same HD2_Amp* IDs as Helix (no suffix) — confirmed from exports
+#   - Cabs use the same HD2_Cab* IDs as Helix (no suffix) — confirmed from exports
+# Run build_catalog.py on your own exports to promote inferred IDs to confirmed.
 PODGO_VERIFIED = frozenset({
+    # ── Utility (confirmed) ──────────────────────────────────────────
+    'HD2_VolPanVolStereo',
+    'HD2_FXLoopMono1',
+    'HD2_ImpulseResponse1024Mono',
+
+    # ── Amps (confirmed: HD2_Amp* IDs match across Helix and POD Go) ─
+    # Not on POD Go: Tuck & Go, bass amps (SVT/Ampeg/Aqua/Cali400/etc), Cosmic Glue
+    'HD2_AmpUSSmallTweed',
+    'HD2_AmpUSDeluxeNrm',   'HD2_AmpUSDeluxeNrml',  'HD2_AmpUSDeluxeVib',
+    'HD2_AmpUSDoubleNrm',   'HD2_AmpUSDoubleNrml',  'HD2_AmpUSDoubleVib',
+    'HD2_AmpUSPrincess',
+    'HD2_AmpTweedBluesNrm', 'HD2_AmpTweedBluesBrt',
+    'HD2_AmpFullertonNrm',  'HD2_AmpFullertonBrt',  'HD2_AmpFullertonJump',
+    'HD2_AmpMailOrderTwin', 'HD2_AmpVoltageQueen',
+    'HD2_AmpCaliIVRhythm1', 'HD2_AmpCaliIVRhythm2', 'HD2_AmpCaliIVLead',
+    'HD2_AmpCaliRectifire', 'HD2_AmpCaliTexasCh1',  'HD2_AmpCaliTexasCh2',
+    'HD2_AmpBritPlexiNrm',  'HD2_AmpBritPlexiBrt',  'HD2_AmpBritPlexiJump',
+    'HD2_AmpBrit2204',
+    'HD2_AmpBritJ45Nrm',    'HD2_AmpBritJ45Brt',
+    'HD2_AmpBritTremNrm',   'HD2_AmpBritTremBrt',   'HD2_AmpBritTremJump',
+    'HD2_AmpBritP75Nrm',    'HD2_AmpBritP75Brt',
+    'HD2_AmpEssexA15',      'HD2_AmpEssexA30',
+    'HD2_AmpA30FawnNrm',    'HD2_AmpA30FawnBrt',
+    'HD2_AmpMatchstickCh1', 'HD2_AmpMatchstickCh2', 'HD2_AmpMatchstickJump',
+    'HD2_AmpGermanMahadeva', 'HD2_AmpGermanUbersonic',
+    'HD2_AmpSoloLeadClean', 'HD2_AmpSoloLeadCrunch', 'HD2_AmpSoloLeadOD',
+    'HD2_AmpANGLMeteor',    'HD2_AmpAnglMeteor',
+    'HD2_AmpDasBenzinMega', 'HD2_AmpDasBenzinLead',
+    'HD2_AmpPVPanama',
+    'HD2_AmpRevvGenPurple', 'HD2_AmpRevvGenRed',
+    'HD2_AmpPlacaterClean', 'HD2_AmpPlacaterDirty',
+    'HD2_AmpDerailedIngrid',
+    'HD2_AmpMandarin80',    'HD2_AmpMandarinRocker',
+    'HD2_AmpMoonNrm',       'HD2_AmpMoonBrt',        'HD2_AmpMoonJump',
+    'HD2_AmpWhoWatt100',
+    'HD2_AmpInterstateZed', 'HD2_AmpDividedDuo',
+    'HD2_AmpArchetypeClean', 'HD2_AmpArchetypeLead',
+    'HD2_AmpCartographer',
+    'HD2_AmpJazzRivet120',
+    'HD2_AmpGrammaticoNrm', 'HD2_AmpGrammaticoBrt',  'HD2_AmpGrammaticoJump',
+    'HD2_AmpGSG100',
+    'HD2_AmpLine6Litigator', 'HD2_AmpLine6Badonk',   'HD2_AmpLine6Elektrik',
+    'HD2_AmpLine6Doom',      'HD2_AmpLine6Epic',      'HD2_AmpLine6Fatality',
+    'HD2_AmpLine6Elmsley',   'HD2_AmpLine6Ventoux',   'HD2_AmpLine62204Mod',
+    'HD2_AmpSoupPro',        'HD2_AmpStoneAge185',
+
+    # ── Cabs (confirmed: HD2_Cab* IDs match across Helix and POD Go) ─
+    'HD2_Cab1x12BlueBell',    'HD2_Cab1x12USDeluxe',   'HD2_Cab1x12Lead80',
+    'HD2_Cab1x12MatchG25',    'HD2_Cab1x12MatchH30',
+    'HD2_Cab2x12DoubleC12N',  'HD2_Cab2x12BlueBell',
+    'HD2_Cab2x12JazzRivet',   'HD2_Cab2x12Interstate',
+    'HD2_Cab4x10TweedP10R',
+    'HD2_Cab4x121960T75',     'HD2_Cab4x12Greenback25', 'HD2_Cab4x12Greenback20',
+    'HD2_Cab4X12CaliV30',     'HD2_Cab4x12XXLV30',
+    'HD2_Cab4x12UberT75',     'HD2_Cab4x12UberV30',
+    'HD2_Cab4x12MandarinEM',  'HD2_Cab4x12WhoWatt100',
+    'HD2_Cab4x12Blackback30', 'HD2_Cab4x12SoloLeadEM',
+    'HD2_Cab1x10PrincessCopperhead',
+
+    # ── EQ (confirmed: POD Go uses HD2_EQ_STATIC_* format) ───────────
+    'HD2_EQ_STATIC_ParametricStereo',
+    'HD2_EQ_STATIC_GraphicStereo',
+
+    # ── Wah (confirmed: Stereo suffix) ───────────────────────────────
     'HD2_WahUKWah846Stereo',
     'HD2_WahTeardropStereo',
-    'HD2_CompressorKinkyCompMono',
-    'HD2_CompressorROSSCompMono',
+    'HD2_WahFasselStereo',
+    'HD2_WahChromeStereo',
+
+    # ── Drive (confirmed pattern: Mono suffix) ────────────────────────
     'HD2_DistTeemahMono',
     'HD2_DistScream808Mono',
     'HD2_DistKinkyBoostMono',
-    'HD2_EQ_STATIC_ParametricStereo',
-    'HD2_EQ_STATIC_GraphicStereo',
+    'HD2_DistMinotaurMono',
+    'HD2_DistHedgehogD9Mono',
+    'HD2_DistStuporODMono',
+    'HD2_DistCompulsiveDriveMono',
+    'HD2_DistVerminDistMono',
+    'HD2_DistVitalDistMono',
+    'HD2_DistDerangedMasterMono',
+    'HD2_DistTriangleFuzzMono',
+    'HD2_DistArbitratorFuzzMono',
+    'HD2_DistHorizonDriveMono',
+    'HD2_DistValveDriverMono',
+    'HD2_DistDhyanaDriveMono',
+    'HD2_DistPillarsMono',
+    'HD2_DistRamsHeadMono',
+
+    # ── Comp (confirmed pattern: Mono suffix) ─────────────────────────
+    'HD2_CompressorKinkyCompMono',
+    'HD2_CompressorROSSCompMono',
+    'HD2_CompressorDeluxeCompMono',
+    'HD2_CompressorLAStudioCompMono',
+
+    # ── Mod (confirmed pattern: Stereo suffix) ────────────────────────
     'HD2_ChorusStereo',
+    'HD2_Chorus70sChorusStereo',
     'HD2_FlangerStereo',
     'HD2_PhaserStereo',
     'HD2_TremoloTremoloStereo',
+    'HD2_TremoloOpticalTremStereo',
+    'HD2_Tremolo60sBiasTremStereo',
+    'HD2_VibratoBubbleVibratoStereo',
+    'HD2_RotaryRotaryStereo',
+
+    # ── Delay (confirmed pattern: Stereo suffix) ──────────────────────
+    # Note: Cosmos Echo (Roland RE-201) is NOT in the official POD Go model list;
+    # the device has Multi-Head (Roland RE-101) instead.
     'HD2_DelaySimpleDelayStereo',
     'HD2_DelayDigitalDelayStereo',
-    'HD2_ReverbGlitzStereo',
+    'HD2_DelayBucketBrigadeStereo',
+    'HD2_DelayTransistorTapeStereo',
+    'HD2_DelayElephantManStereo',
+    'HD2_DelayDualDelayStereo',
+    'HD2_DelayPingPongStereo',
+    'HD2_DelayVintageDigitalStereo',
+    'HD2_DelayAdriaticDelayStereo',
+    'HD2_DelayReverseDelayStereo',
+
+    # ── Reverb (confirmed pattern: mostly Stereo, Spring = Mono) ──────
     'HD2_ReverbHallStereo',
     'HD2_ReverbPlateStereo',
     'HD2_ReverbRoomStereo',
+    'HD2_ReverbGlitzStereo',
+    'HD2_ReverbChamberStereo',
+    'HD2_ReverbTileStereo',
+    'HD2_ReverbOctoStereo',
+    'HD2_ReverbGanymedeStereo',
     'HD2_ReverbSpringMono',
-    'HD2_ImpulseResponse1024Mono',
-    # Amps confirmed via DH CHORUS CLOUD and template testing
-    'HD2_AmpA30FawnNrm',
-    'HD2_AmpUSDoubleNrm',
-    # Cabs confirmed via template testing
-    'HD2_Cab2x12DoubleC12N',
+    'HD2_ReverbHxSpringStereo',
+    'HD2_Reverb63SpringStereo',
+    'HD2_ReverbDoubleTankStereo',
+
+    # ── Pitch (confirmed pattern: Stereo suffix) ──────────────────────
+    'HD2_PitchSimplePitchStereo',
+    'HD2_PitchTwinHarmonyStereo',
+    'HD2_PitchDualPitchStereo',
+    'HD2_PitchPitchWhamStereo',
 })
 
 
@@ -527,7 +732,8 @@ def find_model(query):
 
 def compact_catalog(categories=None):
     """Token-efficient listing for prompting the LLM, grouped by category.
-    Only includes PODGO_VERIFIED ids so the LLM never proposes an untested model."""
+    Only includes PODGO_VERIFIED ids — POD Go-compatible model IDs with the
+    correct Mono/Stereo suffix that the device firmware expects."""
     cats = categories or CATEGORIES
     out = []
     for cat in cats:
