@@ -618,7 +618,41 @@ PODGO_VERIFIED = frozenset({
 
 
 # ─── Helper lookups ───────────────────────────────────────────────
+import json
+import os
 import re
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_LEARNED_BLOCKS_PATH = os.path.join(_HERE, "learned_blocks.json")
+
+try:
+    with open(_LEARNED_BLOCKS_PATH) as _f:
+        LEARNED_BLOCKS = json.load(_f)
+except (FileNotFoundError, json.JSONDecodeError):
+    LEARNED_BLOCKS = {}
+
+
+def learned_params(model_id):
+    """Real parameter values harvested from the user's own presets for this
+    model id (see build_catalog.py), or None if nothing's been learned for it.
+    Excludes @-prefixed meta fields (@model, @enabled, @position, ...) —
+    callers only want the actual knob values."""
+    block = LEARNED_BLOCKS.get(model_id)
+    if not block:
+        return None
+    params = {k: v for k, v in block.items() if not k.startswith("@")}
+    return params or None
+
+
+def save_learned_blocks(blocks):
+    """Persist an updated learned-blocks library to disk and swap it in as the
+    live in-memory catalog immediately, so the running server benefits without
+    a restart."""
+    with open(_LEARNED_BLOCKS_PATH, "w") as f:
+        json.dump(blocks, f, indent=2)
+    global LEARNED_BLOCKS
+    LEARNED_BLOCKS = blocks
+
 
 _BY_CATEGORY = {}
 _BY_NAME = {}

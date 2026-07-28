@@ -43,6 +43,31 @@ def scan(folder):
     print("The agent will use these as known-good definitions for model swaps.")
 
 
+def learn_from_patch(patch):
+    """Merge one already-loaded preset's real blocks into the persistent
+    learned-blocks library (learned_blocks.json), on top of whatever's already
+    there. Unlike scan(), this never discards previously learned models — each
+    upload only adds to or refreshes the store. Returns how many models were
+    newly learned (not just refreshed)."""
+    library = dict(model_db.LEARNED_BLOCKS)
+    added = 0
+    changed = False
+    for _dsp, _key, block in pe.iter_blocks(patch):
+        mid = block.get("@model", "")
+        if not mid:
+            continue
+        entry = {k: v for k, v in block.items() if k not in ("@position", "@path")}
+        if mid not in library:
+            added += 1
+            changed = True
+        elif library[mid] != entry:
+            changed = True
+        library[mid] = entry
+    if changed:
+        model_db.save_learned_blocks(library)
+    return added
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("usage: python build_catalog.py /path/to/folder/of/pgp")

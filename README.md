@@ -17,19 +17,26 @@ Two modes:
 
 ```
  you ─▶ browser UI ─▶ FastAPI server ─▶ Ollama (local model)
-                           │
-                           ▼
-                  patch engine: validates the model's
-                  proposed edits against the real preset,
-                  applies them, writes a .pgp
+                                              │
+                                              ▼
+                                     edit operations (json)
+                                              │
+                                              ▼
+                                       patch engine: validates
+                                       each op against the real
+                                       preset, applies the good
+                                       ones to the in-memory patch
+
+ (later, on demand) in-memory patch ─▶ Download .pgp ─▶ file on disk
 ```
 
 The model never writes a preset directly. It only proposes **edit operations**, such as setting a parameter, bypassing a block, swapping an amp model, setting tempo, and renaming the patch. The patch engine is the guardrail: it applies edits to your actual file and rejects anything that doesn't fit, such as a wrong parameter name, a bad value type, an amp swapped out for a reverb. The worst case is an edit that gets rejected and reported back to you.
 
-Two extra layers of reliability on top of that:
+Three extra layers of reliability on top of that:
 
 1. **JSON schema enforcement.** The Ollama call includes a formal schema for the `{"reply", "edits"}` response shape. The model physically cannot emit an unrecognized structure.
-2. **Repair pass.** If a small model still produces a non-standard shape, `coerce_to_edits` maps it to real blocks and parameters that exist, so the worst case is informative rejections rather than a silent no-op.
+2. **One retry with feedback.** If the model's output still doesn't parse into that shape (and it wasn't a deliberate empty response, like a clarifying question), the agent replays the bad output back to the model with a short correction and asks it to try again — once.
+3. **Repair pass.** If it's still off after the retry, `coerce_to_edits` maps whatever came back onto real blocks and parameters that exist, so the worst case is informative rejections rather than a silent no-op.
 
 Parameter tweaks and bypass toggles are always exact, because they only touch keys already in your file. Changes also cascade into snapshots that were in sync with the old value, so your existing snapshots stay coherent.
 
@@ -81,17 +88,21 @@ The loop is human-paced by design — there's no way to push a tone to the unit 
 
 ---
 
-## Teaching it your gear (optional but recommended for swaps)
+## Teaching it your gear
 
-Parameter tweaks and bypass toggles are always exact. **Model swaps** are the one fuzzy part: a different model brings a different parameter set, and the catalog can't know defaults it's never seen.
+Parameter tweaks and bypass toggles are always exact. **Model swaps** are the one fuzzy part: a different model brings a different parameter set, and a model's real parameter names (e.g. `Mod Mix`, `Xover`, `BiasX`) aren't documented anywhere — the app can only learn them from real exports.
 
-To make swaps reliable, point `build_catalog.py` at a folder of presets you've exported from your own unit:
+**It learns automatically.** Every time you upload a `.pgp`, the app harvests the real blocks it contains into `learned_blocks.json` — merging into whatever it already knows, never discarding older learned models. From then on, a cross-category model swap (e.g. Reverb → Drive) pastes in that model's real, known-good parameters instead of leaving the block empty for the agent to guess at. This persists across restarts, so you never lose what it's learned, and re-uploading a preset it's already seen is a no-op.
+
+You can also backfill it in bulk from a whole folder of past exports:
 
 ```bash
 python build_catalog.py /path/to/your/pgp/files
 ```
 
-This scans every preset, reports all models and parameters your unit actually uses, and writes `learned_blocks.json` — real, known-good block definitions the agent uses as swap templates. Run it any time you've accumulated new presets.
+This scans every preset in the folder, reports all models and parameters your unit actually uses, and writes `learned_blocks.json` in one pass. Unlike the automatic per-upload learning, this **overwrites** the file with just that folder's contents — handy for a one-time bulk import, but if you run it again later on a different subset of presets you'll lose models that were only in the earlier run.
+
+None of this is required: without any learned data, cross-category swaps still work, just with the agent filling in parameter names from its own general knowledge rather than a verified template.
 
 ---
 
@@ -116,14 +127,17 @@ This scans every preset, reports all models and parameters your unit actually us
 
 Run with `python server.py`, then open http://localhost:8000. Everything stays on your machine: the UI talks to this server, and this server talks to your local Ollama. No data leaves the box.
 
+On every upload, it also calls `build_catalog.learn_from_patch` to fold that preset's real blocks into `learned_blocks.json` — silently, and without ever failing the upload if learning hits an error.
+
 ### agent.py — the reasoning layer (hardened)
 
 Turns a natural-language request into validated edit ops by prompting a local model served by Ollama. The model only *proposes* edits; `patch_engine` validates and applies them.
 
-This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Two defenses:
+This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Three defenses:
 
 1. A much stricter prompt with a worked example and an explicit anti-example.
-2. A repair pass (`coerce_to_edits`) that salvages common wrong shapes by mapping them onto blocks/params that actually exist, so the worst case is informative rejections rather than a silent "done".
+2. One retry with feedback: if the output doesn't parse into `{"reply","edits"}` and wasn't a deliberate empty response (e.g. a clarifying question), the agent shows the model its own bad output plus a short correction and asks it to try again — once.
+3. A repair pass (`coerce_to_edits`) that salvages whatever comes back by mapping it onto blocks/params that actually exist, so the worst case is informative rejections rather than a silent "done".
 
 ### patch_engine.py — read, introspect, and safely edit `.pgp` presets
 
@@ -143,19 +157,23 @@ A POD Go preset is JSON shaped like:
 
 ### model_db.py — Line 6 POD Go model-ID catalog
 
-Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple.
+Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple. Also owns the learned-blocks store: loads `learned_blocks.json` into `LEARNED_BLOCKS` at import, exposes `learned_params(model_id)` (which `patch_engine` uses to fill in real parameter values on a cross-category swap), and `save_learned_blocks(blocks)` to persist updates and swap in the new catalog in memory immediately.
 
 Hardware name mappings derived from the community-maintained [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT licensed) and the Line 6 Owner's Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
 
 ### build_catalog.py — learn from your own presets
 
-Point this at a folder of real `.pgp` files you've exported from POD Go Edit and it will (1) report every model id and parameter actually used by your unit, and (2) write `learned_blocks.json` — a library of real, known-good block definitions the agent can paste in when you ask it to swap models.
+`learn_from_patch(patch)` is what `server.py` calls on every upload: it merges one preset's real blocks into `learned_blocks.json` on top of whatever's already learned, and returns how many models were newly learned (not just refreshed). This is the automatic, incremental path.
+
+`scan(folder)` is the manual CLI entry point for a one-time bulk import from a whole folder of past exports:
 
 ```bash
 python build_catalog.py /path/to/folder/of/pgp
 ```
 
-Why this helps: parameter tweaks and bypass toggles are always exact because they edit keys already in your file. Model swaps are the one fuzzy part, because a different model has a different parameter set. Feeding the agent real blocks harvested from your own presets makes swaps reliable too.
+It reports every model id and parameter actually used across the folder, and writes `learned_blocks.json` in one pass — but unlike `learn_from_patch`, it **overwrites** the file with just that folder's contents rather than merging.
+
+Why any of this helps: parameter tweaks and bypass toggles are always exact because they edit keys already in your file. Model swaps are the one fuzzy part, because a different model has a different parameter set with real firmware-specific key names nothing else in this app knows about. Feeding the agent real blocks harvested from your own presets makes swaps reliable too.
 
 ---
 

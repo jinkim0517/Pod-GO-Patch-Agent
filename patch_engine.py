@@ -402,17 +402,27 @@ def apply_edits(patch, edits):
                     # old params — they belong to the previous model type and
                     # would corrupt the block on the device. Same-category swaps
                     # keep params (same knobs, different character).
-                    if cat_new != cat_old and cat_old not in ("Unknown",) and cat_new not in ("Unknown",):
+                    cross_category = (cat_new != cat_old and cat_old not in ("Unknown",)
+                                       and cat_new not in ("Unknown",))
+                    params_note = ""
+                    if cross_category:
                         for pk in list(block.keys()):
                             if not pk.startswith("@"):
                                 del block[pk]
+                        # Paste in real, known-good params harvested from the
+                        # user's own presets (build_catalog.py) if we have them
+                        # for this exact model, instead of leaving it empty for
+                        # the agent to guess param names from scratch.
+                        learned = model_db.learned_params(new_id)
+                        if learned:
+                            block.update(learned)
+                            params_note = " Params filled in from your learned catalog."
+                        else:
+                            params_note = " Params cleared — set new ones for this effect type."
                     results.append(_ok(
                         edit,
                         f"{block_key} model {name_old} → {name_new}."
-                        f"{fallback_note}"
-                        + (" Params cleared — set new ones for this effect type."
-                           if cat_new != cat_old and cat_old not in ("Unknown",) and cat_new not in ("Unknown",)
-                           else "")))
+                        f"{fallback_note}{params_note}"))
 
                 else:  # set_param
                     param = edit["param"]

@@ -213,7 +213,7 @@ function renderBuildCanvas(){
     const sw = document.createElement('div'); sw.className = 'swatch';
     sw.style.background = `var(${SWATCH[cat]||'--util'})`;
     const txt = document.createElement('div');
-    txt.innerHTML = `<div class=”nm”>${cat}</div>`;
+    txt.innerHTML = `<div class="nm">${cat}</div>`;
     const tag = document.createElement('div'); tag.className = 'cat';
     tag.textContent = cat;
     el.append(sw, txt, tag); c.appendChild(el);
@@ -243,6 +243,7 @@ async function uploadFile(f){
   const p = await r.json(); sid = p.session_id; renderChain(p);
   thread.innerHTML=''; setMode('edit');
   addHint(`Loaded "${p.name}" from ${p.filename}. Tell me what to change — e.g. "more gain and tighten the lows" or "add some ambience."`);
+  if(p.learned) addHint(`Learned ${p.learned} new model${p.learned>1?'s':''} from this preset for future swaps.`);
 }
 
 async function sendMessage(text, buildMode=false){
@@ -266,6 +267,7 @@ async function sendMessage(text, buildMode=false){
             : "Nothing could be applied:")
         : d.reply;
       addChanges(applied, rejected, buildMode);
+      if(d.retried) addHint('(needed a retry to get a valid response)');
       renderChain(d);
       if(d.build_complete) setMode('edit');
       const dl = $('#dl'); dl.href = '/api/download/' + sid; dl.style.display = ''; dl.classList.remove('disabled');

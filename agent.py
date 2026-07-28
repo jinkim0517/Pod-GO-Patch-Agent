@@ -178,7 +178,7 @@ def call_ollama(messages, model=DEFAULT_MODEL, url=OLLAMA_URL, timeout=600):
         "messages": messages,
         "stream": False,
         "options": {"temperature": 0.2, "num_ctx": 8192},
-        # Hard schema constraint — far stronger than "format": "json".
+        # Hard schema constraint that is far stronger than "format": "json".
         "format": _edits_schema(),
     }
     data = json.dumps(payload).encode("utf-8")
@@ -282,6 +282,24 @@ def parse_model_output(text, surface=None):
     return (reply, edits)
 
 
+def _is_conforming(text):
+    """True if the raw text already parses into the {"reply","edits":[...]}
+    contract shape, meaning an empty edits list was the model deliberately
+    choosing not to act (e.g. asking a clarifying question) rather than a
+    shape the repair pass had to salvage."""
+    obj = _extract_json(text)
+    return isinstance(obj, dict) and isinstance(obj.get("edits"), list)
+
+
+RETRY_FEEDBACK = (
+    'That response could not be parsed into valid edit operations. Re-read the '
+    'OUTPUT CONTRACT: reply with EXACTLY one JSON object '
+    '{"reply": "...", "edits": [...]}, using only block ids and parameters '
+    'listed in CURRENT PRESET and model ids from CATALOG. Do not use '
+    'blocks-as-keys. Output the JSON object and nothing else.'
+)
+
+
 def _generate_preset_name(user_message, model=DEFAULT_MODEL, url=OLLAMA_URL):
     """Ask the model for a short preset name based on the build description."""
     msgs = [
@@ -315,8 +333,21 @@ def run_turn(patch, user_message, history=None, model=DEFAULT_MODEL, url=OLLAMA_
     # print("\n=== RAW MODEL OUTPUT ===\n", raw, "\n=======================\n")
     reply, edits = parse_model_output(raw, surface)
 
+    # A conforming-but-empty response means the model deliberately chose not to
+    # act (e.g. asked a clarifying question) - that's not a failure, don't retry.
+    retried = False
+    if not edits and not _is_conforming(raw):
+        retried = True
+        retry_messages = messages + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": RETRY_FEEDBACK},
+        ]
+        raw = call_ollama(retry_messages, model=model, url=url)
+        reply, edits = parse_model_output(raw, surface)
+
     if not edits:
-        return {"reply": reply, "applied": [], "rejected": [], "patch": patch, "raw": raw}
+        return {"reply": reply, "applied": [], "rejected": [], "patch": patch,
+                "raw": raw, "retried": retried}
 
     new_patch, results = pe.apply_edits(patch, edits)
     applied = [r["detail"] for r in results if r["ok"]]
@@ -329,4 +360,4 @@ def run_turn(patch, user_message, history=None, model=DEFAULT_MODEL, url=OLLAMA_
             out_patch, name_results = pe.apply_edits(out_patch, [{"op": "rename", "value": name}])
             applied += [r["detail"] for r in name_results if r["ok"]]
     return {"reply": reply, "applied": applied, "rejected": rejected,
-            "patch": out_patch, "raw": raw}
+            "patch": out_patch, "raw": raw, "retried": retried}

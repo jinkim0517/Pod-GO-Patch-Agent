@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 import patch_engine as pe
 import agent
+import build_catalog
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(HERE, "template_newpreset.pgp")
@@ -80,8 +81,13 @@ async def upload(file: UploadFile = File(...)):
         patch = pe.load_patch(raw)
     except Exception as e:
         raise HTTPException(400, str(e))
+    try:
+        learned = build_catalog.learn_from_patch(patch)
+    except Exception:
+        learned = 0  # never let learning break an upload
     sid = _new_session(patch, base_patch=copy.deepcopy(patch))
-    return {"session_id": sid, "filename": file.filename, **_chain_payload(patch)}
+    return {"session_id": sid, "filename": file.filename, "learned": learned,
+            **_chain_payload(patch)}
 
 
 @app.post("/api/chat")
@@ -89,7 +95,7 @@ def chat(body: ChatIn):
     s = _state(body.session_id)
     if body.build:
         try:
-            # Prefer an uploaded preset as the build base — its model IDs are
+            # Prefer an uploaded preset as the build base since its model IDs are
             # device-verified. Fall back to the bundled template if nothing has
             # been uploaded this session.
             base = s.get("base_patch") or _load_template()
@@ -104,7 +110,7 @@ def chat(body: ChatIn):
             s["patch"], body.message, history=s["history"], model=model,
             build_mode=body.build)
     except RuntimeError as e:
-        # Ollama not reachable, etc. — surface cleanly to the UI.
+        # Ollama not reachable, etc. surface cleanly to the UI.
         raise HTTPException(503, str(e))
 
     # In build mode, finalize the patch immediately so the UI chain and the
@@ -135,6 +141,7 @@ def chat(body: ChatIn):
         "applied": applied,
         "rejected": rejected,
         "build_complete": s.get("is_build", False) and bool(result["applied"]),
+        "retried": result.get("retried", False),
         **_chain_payload(out_patch),
     }
 
