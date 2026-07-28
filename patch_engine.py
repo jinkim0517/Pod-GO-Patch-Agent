@@ -1,24 +1,3 @@
-"""
-patch_engine.py — read, introspect, and safely edit Line 6 POD Go (.pgp) presets.
-
-A POD Go preset is JSON shaped like:
-
-    { "data": { "meta": {...}, "tone": {
-          "global":   { "@tempo": 120.0, ... },
-          "dsp0":     { "block0": { "@model": "HD2_AmpBrit2204",
-                                    "@enabled": true, "@position": 2,
-                                    "Gain": 5.0, "Bass": 0.5, ... },
-                        "cab0":   { "@model": "HD2_Cab...", ... }, ... },
-          "snapshot0": {...}, "controller": {...}, ... } } }
-
-DESIGN PRINCIPLE — preserve and mutate.
-We never rebuild a preset from assumptions. We load the user's exact JSON, and
-every edit touches only the one key it names. A block's parameters are whatever
-non-"@" keys already exist in that block, so the editable surface is learned
-from the real file rather than hard-coded. That makes round-tripping faithful
-even for parameters or models this code has never seen.
-"""
-
 import json
 import copy
 import model_db

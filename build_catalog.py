@@ -1,19 +1,3 @@
-"""
-build_catalog.py — learn from YOUR presets.
-
-Point this at a folder of real .pgp files you've exported from POD Go Edit and
-it will (1) report every model id and parameter actually used by your unit, and
-(2) write `learned_blocks.json` — a library of real, known-good block
-definitions the agent can paste in when you ask it to swap models.
-
-    python build_catalog.py /path/to/folder/of/pgp
-
-Why this helps: parameter tweaks and bypass toggles are always exact because
-they edit keys already in your file. MODEL SWAPS are the one fuzzy part, because
-a different model has a different parameter set. Feeding the agent real blocks
-harvested from your own presets makes swaps reliable too.
-"""
-
 import json
 import os
 import sys

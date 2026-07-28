@@ -1,12 +1,3 @@
-"""
-server.py — local web server for the POD Go patch agent.
-
-Run:  python server.py   (then open http://localhost:8000)
-
-Everything stays on your machine: the UI talks to this server, this server
-talks to your local Ollama. No data leaves the box.
-"""
-
 import io
 import os
 import uuid

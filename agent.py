@@ -1,19 +1,3 @@
-"""
-agent.py — the reasoning layer (hardened).
-
-Turns a natural-language request into validated edit ops by prompting a LOCAL
-model served by Ollama. The model only PROPOSES edits; patch_engine validates
-and applies them.
-
-This version fixes a real-world failure: small models tend to invent their own
-JSON shape (e.g. {block: {model_id: {params}}}) instead of the edit grammar.
-Two defenses:
-  1. A much stricter prompt with a worked example and an explicit anti-example.
-  2. A repair pass (`coerce_to_edits`) that salvages common wrong shapes by
-     mapping them onto blocks/params that actually exist, so the worst case is
-     informative rejections rather than a silent "done".
-"""
-
 import json
 import re
 import urllib.request

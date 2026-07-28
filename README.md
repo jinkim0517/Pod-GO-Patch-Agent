@@ -112,6 +112,60 @@ This scans every preset, reports all models and parameters your unit actually us
 └── requirements.txt       fastapi, uvicorn, python-multipart
 ```
 
+### server.py — local web server
+
+Run with `python server.py`, then open http://localhost:8000. Everything stays on your machine: the UI talks to this server, and this server talks to your local Ollama. No data leaves the box.
+
+### agent.py — the reasoning layer (hardened)
+
+Turns a natural-language request into validated edit ops by prompting a local model served by Ollama. The model only *proposes* edits; `patch_engine` validates and applies them.
+
+This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Two defenses:
+
+1. A much stricter prompt with a worked example and an explicit anti-example.
+2. A repair pass (`coerce_to_edits`) that salvages common wrong shapes by mapping them onto blocks/params that actually exist, so the worst case is informative rejections rather than a silent "done".
+
+### patch_engine.py — read, introspect, and safely edit `.pgp` presets
+
+A POD Go preset is JSON shaped like:
+
+```
+{ "data": { "meta": {...}, "tone": {
+      "global":   { "@tempo": 120.0, ... },
+      "dsp0":     { "block0": { "@model": "HD2_AmpBrit2204",
+                                "@enabled": true, "@position": 2,
+                                "Gain": 5.0, "Bass": 0.5, ... },
+                    "cab0":   { "@model": "HD2_Cab...", ... }, ... },
+      "snapshot0": {...}, "controller": {...}, ... } } }
+```
+
+**Design principle — preserve and mutate.** We never rebuild a preset from assumptions. We load the user's exact JSON, and every edit touches only the one key it names. A block's parameters are whatever non-`@` keys already exist in that block, so the editable surface is learned from the real file rather than hard-coded. That makes round-tripping faithful even for parameters or models this code has never seen.
+
+### model_db.py — Line 6 POD Go model-ID catalog
+
+Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple.
+
+Key difference between POD Go and Helix/HX firmware:
+
+- Amps and cabs: same `HD2_Amp*` / `HD2_Cab*` IDs as Helix (no suffix)
+- Effects: POD Go appends `Mono` or `Stereo` to the model ID, e.g. `HD2_DistScream808` → `HD2_DistScream808Mono`, `HD2_ReverbHall` → `HD2_ReverbHallStereo`
+- EQ: completely different format — `HD2_EQ_STATIC_*Stereo`
+- Routing: POD Go uses `P34_AppDSPFlow*` (not `HD2_AppDSPFlow*`)
+
+`MODEL_DB` contains both Helix IDs (for display/lookup of uploaded Helix presets) and POD Go Mono/Stereo variants. `PODGO_VERIFIED` controls what the LLM can propose as swap targets — only those IDs are shown in `compact_catalog()`.
+
+Hardware name mappings derived from the community-maintained [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT licensed) and the Line 6 Owner's Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
+
+### build_catalog.py — learn from your own presets
+
+Point this at a folder of real `.pgp` files you've exported from POD Go Edit and it will (1) report every model id and parameter actually used by your unit, and (2) write `learned_blocks.json` — a library of real, known-good block definitions the agent can paste in when you ask it to swap models.
+
+```bash
+python build_catalog.py /path/to/folder/of/pgp
+```
+
+Why this helps: parameter tweaks and bypass toggles are always exact because they edit keys already in your file. Model swaps are the one fuzzy part, because a different model has a different parameter set. Feeding the agent real blocks harvested from your own presets makes swaps reliable too.
+
 ---
 
 ## Model Reference

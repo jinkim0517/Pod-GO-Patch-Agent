@@ -1,26 +1,3 @@
-"""
-model_db.py — Line 6 POD Go model-ID catalog.
-
-Maps internal model identifiers (the @model field inside a preset's blocks)
-to a (category, display_name, real_hardware) tuple.
-
-KEY DIFFERENCE between POD Go and Helix/HX firmware:
-  - Amps and cabs:  same HD2_Amp* / HD2_Cab* IDs as Helix (no suffix)
-  - Effects:        POD Go appends Mono or Stereo to the model ID
-                    e.g. HD2_DistScream808 → HD2_DistScream808Mono
-                         HD2_ReverbHall   → HD2_ReverbHallStereo
-  - EQ:             completely different format: HD2_EQ_STATIC_*Stereo
-  - Routing:        POD Go uses P34_AppDSPFlow* (not HD2_AppDSPFlow*)
-
-MODEL_DB contains both Helix IDs (for display/lookup of uploaded Helix presets)
-and POD Go Mono/Stereo variants. PODGO_VERIFIED controls what the LLM can
-propose as swap targets — only those IDs are shown in compact_catalog().
-
-Hardware name mappings derived from the community-maintained
-GhostNote17/HelixNativePresets project (MIT licensed) and the Line 6 Owner's
-Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
-"""
-
 MODEL_DB = {
     # ===== Amp =====
     'HD2_AmpUSSmallTweed': ('Amp', 'US Small Tweed', 'Fender Champ'),
