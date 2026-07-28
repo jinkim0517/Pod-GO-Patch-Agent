@@ -1,13 +1,13 @@
 # POD Go Patch Agent
 
-A local, chat-driven tone engineer for the **Line 6 POD Go**. Describe a sound in plain English — *"warm blackface clean with a little spring,"* *"too muddy, tighten the low end,"* *"more gain and ambience"* — and it edits a preset and hands you a `.pgp` you import in POD Go Edit. You stay in the loop: react to what you hear (*"more space,"* *"less fizz"*) and it makes targeted moves, one round at a time.
+A local, chat-driven tone engineer for the **Line 6 POD Go**. Describe a sound in plain English (Ex. *"warm strat tone with a little spring,"* *"too muddy, tighten the low end,"* *"more gain and ambience"*) and it edits a preset and hands you a `.pgp` you import in POD Go Edit. You stay in the loop by reacting to what you hear and giving the agent feedback (*"more space,"* *"less fizz"*) and it makes targeted moves.
 
 Two modes:
 
-- **Tweak** — load an existing preset and describe changes. The agent edits only what you name.
+- **Edit** — load an existing preset and describe changes. The agent edits only what you name.
 - **Build** — describe a tone from scratch. The agent selects an amp, cab, and effects, and sets parameters on everything it enables.
 
-**Runs entirely on your machine.** A local model served by [Ollama] does the reasoning. No API keys, no cloud, nothing leaves your computer.
+**Runs entirely on your machine.** A local model served by [Ollama] does the reasoning. No API keys, no cloud, which allows for secure and free access.
 
 [Ollama]: https://ollama.com
 
@@ -24,14 +24,14 @@ Two modes:
                   applies them, writes a .pgp
 ```
 
-The model never writes a preset directly. It only proposes **edit operations** — set a parameter, bypass a block, swap an amp model, set tempo, rename. The patch engine is the guardrail: it applies edits to your actual file and **rejects anything that doesn't fit** — a wrong parameter name, a bad value type, an amp swapped out for a reverb. The worst case is an edit that gets rejected and reported back to you.
+The model never writes a preset directly. It only proposes **edit operations**, such as setting a parameter, bypassing a block, swapping an amp model, setting tempo, and renaming the patch. The patch engine is the guardrail: it applies edits to your actual file and rejects anything that doesn't fit, such as a wrong parameter name, a bad value type, an amp swapped out for a reverb. The worst case is an edit that gets rejected and reported back to you.
 
 Two extra layers of reliability on top of that:
 
 1. **JSON schema enforcement.** The Ollama call includes a formal schema for the `{"reply", "edits"}` response shape. The model physically cannot emit an unrecognized structure.
 2. **Repair pass.** If a small model still produces a non-standard shape, `coerce_to_edits` maps it to real blocks and parameters that exist, so the worst case is informative rejections rather than a silent no-op.
 
-Parameter tweaks and bypass toggles are **always exact**, because they only touch keys already in your file. Changes also cascade into snapshots that were in sync with the old value, so your existing snapshots stay coherent.
+Parameter tweaks and bypass toggles are always exact, because they only touch keys already in your file. Changes also cascade into snapshots that were in sync with the old value, so your existing snapshots stay coherent.
 
 ---
 
@@ -46,7 +46,7 @@ ollama pull llama3.1:8b      # solid default
 ollama serve                 # if it isn't already running
 ```
 
-> A model with an **8k+ context window** is recommended — the amp/cab/effects catalog is sizeable. The server requests `num_ctx: 8192` from Ollama automatically.
+> A model with an 8k+ context window is recommended, since the amp/cab/effects catalog is sizeable. The server requests `num_ctx: 8192` from Ollama automatically.
 
 **2. Install dependencies and start the server**
 
@@ -144,15 +144,6 @@ A POD Go preset is JSON shaped like:
 ### model_db.py — Line 6 POD Go model-ID catalog
 
 Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple.
-
-Key difference between POD Go and Helix/HX firmware:
-
-- Amps and cabs: same `HD2_Amp*` / `HD2_Cab*` IDs as Helix (no suffix)
-- Effects: POD Go appends `Mono` or `Stereo` to the model ID, e.g. `HD2_DistScream808` → `HD2_DistScream808Mono`, `HD2_ReverbHall` → `HD2_ReverbHallStereo`
-- EQ: completely different format — `HD2_EQ_STATIC_*Stereo`
-- Routing: POD Go uses `P34_AppDSPFlow*` (not `HD2_AppDSPFlow*`)
-
-`MODEL_DB` contains both Helix IDs (for display/lookup of uploaded Helix presets) and POD Go Mono/Stereo variants. `PODGO_VERIFIED` controls what the LLM can propose as swap targets — only those IDs are shown in `compact_catalog()`.
 
 Hardware name mappings derived from the community-maintained [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT licensed) and the Line 6 Owner's Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
 
@@ -693,11 +684,3 @@ Complete list of models available on the POD Go, sourced from the [official Line
 **The bundled template is structurally correct but inferred.** It matches the POD Go/HX preset shape and round-trips cleanly, but it was not exported from a real unit. For a guaranteed-loadable starting point, export a **"New Preset"** from POD Go Edit and save it over `template_newpreset.pgp`. Better yet, just **upload your own presets** — editing a real file is always faithful, because the app preserves your exact JSON and changes only the keys each edit names.
 
 **Model swaps on blocks the app has never seen are best-effort.** If the model proposes an ID not in the catalog, the engine tries a semantic match first, then falls back to the nearest model in the same effect category. The result is flagged in the change list. Running `build_catalog.py` on your presets eliminates most of these cases.
-
----
-
-## Notes & credits
-
-- POD Go shares the HX modeling engine and model IDs with the Helix family, so the full catalog applies; POD Go exposes a subset, and anything device-specific is picked up from the presets you upload.
-- Model-ID → hardware mappings derived from the community [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT) and the Line 6 Owner's Manuals.
-- Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group. "POD Go," "Helix," and "HX" are trademarks of their respective owners. Back up your presets; use at your own risk.
