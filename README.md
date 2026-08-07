@@ -35,7 +35,7 @@ The model never writes a preset directly. It only proposes **edit operations**, 
 Five extra layers of reliability on top of that:
 
 1. **JSON schema enforcement.** The Ollama call includes a formal schema for the `{"reply", "edits"}` response shape. The model physically cannot emit an unrecognized structure.
-2. **One retry with feedback.** If the model's output still doesn't parse into that shape (and it wasn't a deliberate empty response, like a clarifying question), the agent replays the bad output back to the model with a short correction and asks it to try again — once.
+2. **One retry with feedback.** If the model's output still doesn't parse into that shape (and it wasn't a deliberate empty response, like a clarifying question), the agent replays the bad output back to the model with a short correction and asks it to try again once.
 3. **Repair pass.** If it's still off after the retry, `coerce_to_edits` maps whatever came back onto real blocks and parameters that exist, so the worst case is informative rejections rather than a silent no-op.
 4. **Rejection retry.** If the edits parsed fine but the patch engine rejected every single one (e.g. an amp swapped for a reverb), the agent shows the model the specific rejection reasons and asks for a corrected set of edits — once.
 5. **Param validation against the official catalog.** When [official_catalog.json](#official-model-catalog) is present, `set_param` rejects param names a model doesn't actually have and clamps numeric values into the device's real min/max range, instead of writing values the firmware would reject.
@@ -81,20 +81,20 @@ Open **http://localhost:8000**. The model name field (top-right) accepts any mod
 
 1. Start a new session (the app opens on the clean template by default).
 2. Click **Build** and describe the tone: *"warm Fender-style clean with a spring reverb and a touch of tape echo."*
-3. The agent selects an amp and cab, decides which effect slots to enable, swaps each one to an appropriate model, and sets parameters — all in one pass. The preset is auto-named based on your description.
+3. The agent selects an amp and cab, decides which effect slots to enable, swaps each one to an appropriate model, and sets parameters all in one pass. The preset is auto-named based on your description.
 4. Continue tweaking with normal chat turns. Download when done.
 
 Effect slots are flexible: any slot (Drive, Comp, Mod, Delay, Reverb, Pitch) can be swapped to any effect category. Amp and Cab slots stay fixed.
 
-The loop is human-paced by design — there's no way to push a tone to the unit and hear it instantly, so you audition each download yourself.
+The loop is human-paced by design, so there's no way to push a tone to the unit and hear it instantly, so you audition each download yourself.
 
 ---
 
 ## Teaching it your gear
 
-Parameter tweaks and bypass toggles are always exact. **Model swaps** are the one fuzzy part: a different model brings a different parameter set, and a model's real parameter names (e.g. `Mod Mix`, `Xover`, `BiasX`) aren't documented anywhere — the app can only learn them from real exports.
+Parameter tweaks and bypass toggles are always exact. **Model swaps** are the one fuzzy part: a different model brings a different parameter set, and a model's real parameter names (e.g. `Mod Mix`, `Xover`, `BiasX`) aren't documented anywhere, so the app can only learn them from real exports.
 
-**It learns automatically.** Every time you upload a `.pgp`, the app harvests the real blocks it contains into `learned_blocks.json` — merging into whatever it already knows, never discarding older learned models. From then on, a cross-category model swap (e.g. Reverb → Drive) pastes in that model's real, known-good parameters instead of leaving the block empty for the agent to guess at. This persists across restarts, so you never lose what it's learned, and re-uploading a preset it's already seen is a no-op.
+**It learns automatically.** Every time you upload a `.pgp`, the app harvests the real blocks it contains into `learned_blocks.json`, merging into whatever it already knows, never discarding older learned models. From then on, a cross-category model swap (e.g. Reverb → Drive) pastes in that model's real, known-good parameters instead of leaving the block empty for the agent to guess at. This persists across restarts, so you never lose what it's learned, and re-uploading a preset it's already seen is a no-op.
 
 You can also backfill it in bulk from a whole folder of past exports:
 
@@ -102,7 +102,7 @@ You can also backfill it in bulk from a whole folder of past exports:
 python build_catalog.py /path/to/your/pgp/files
 ```
 
-This scans every preset in the folder, reports all models and parameters your unit actually uses, and writes `learned_blocks.json` in one pass. Unlike the automatic per-upload learning, this **overwrites** the file with just that folder's contents — handy for a one-time bulk import, but if you run it again later on a different subset of presets you'll lose models that were only in the earlier run.
+This scans every preset in the folder, reports all models and parameters your unit actually uses, and writes `learned_blocks.json` in one pass. Unlike the automatic per-upload learning, this **overwrites** the file with just that folder's contents, which is handy for a one-time bulk import, but if you run it again later on a different subset of presets you'll lose models that were only in the earlier run.
 
 None of this is required: without any learned data, cross-category swaps still work, just with the agent filling in parameter names from its own general knowledge rather than a verified template.
 
@@ -149,7 +149,7 @@ Nothing else changes if you skip this step — the app falls back to `PODGO_VERI
 
 Run with `python server.py`, then open http://localhost:8000. Everything stays on your machine: the UI talks to this server, and this server talks to your local Ollama. No data leaves the box.
 
-On every upload, it also calls `build_catalog.learn_from_patch` to fold that preset's real blocks into `learned_blocks.json` — silently, and without ever failing the upload if learning hits an error.
+On every upload, it also calls `build_catalog.learn_from_patch` to fold that preset's real blocks into `learned_blocks.json`, silently, and without ever failing the upload if learning hits an error.
 
 ### agent.py — the reasoning layer (hardened)
 
@@ -158,7 +158,7 @@ Turns a natural-language request into validated edit ops by prompting a local mo
 This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Four defenses:
 
 1. A much stricter prompt with a worked example and an explicit anti-example.
-2. One retry with feedback: if the output doesn't parse into `{"reply","edits"}` and wasn't a deliberate empty response (e.g. a clarifying question), the agent shows the model its own bad output plus a short correction and asks it to try again — once.
+2. One retry with feedback: if the output doesn't parse into `{"reply","edits"}` and wasn't a deliberate empty response (e.g. a clarifying question), the agent shows the model its own bad output plus a short correction and asks it to try again once.
 3. A repair pass (`coerce_to_edits`) that salvages whatever comes back by mapping it onto blocks/params that actually exist, so the worst case is informative rejections rather than a silent "done".
 4. A second, separate retry when the output *does* parse but `patch_engine` rejects every edit (e.g. an amp swapped for a reverb): the agent shows the model the specific rejection reasons and asks for a corrected set of edits — once.
 
@@ -732,6 +732,6 @@ Complete list of models available on the POD Go, sourced from the [official Line
 
 ## Caveats
 
-**The bundled template is structurally correct but inferred.** It matches the POD Go/HX preset shape and round-trips cleanly, but it was not exported from a real unit. For a guaranteed-loadable starting point, export a **"New Preset"** from POD Go Edit and save it over `template_newpreset.pgp`. Better yet, just **upload your own presets** — editing a real file is always faithful, because the app preserves your exact JSON and changes only the keys each edit names.
+**The bundled template is structurally correct but inferred.** It matches the POD Go/HX preset shape and round-trips cleanly, but it was not exported from a real unit. For a guaranteed-loadable starting point, export a **"New Preset"** from POD Go Edit and save it over `template_newpreset.pgp`. Better yet, just **upload your own presets**, as editing a real file is always faithful, because the app preserves your exact JSON and changes only the keys each edit names.
 
 **Model swaps on blocks the app has never seen are best-effort.** If the model proposes an ID not in the catalog, the engine tries a semantic match first, then falls back to the nearest model in the same effect category. The result is flagged in the change list. Running `build_catalog.py` on your presets eliminates most of these cases.
