@@ -108,21 +108,21 @@ None of this is required: without any learned data, cross-category swaps still w
 
 ### Official model catalog
 
-`learned_blocks.json` only knows what you've personally uploaded. For everything else, the app can pull Line 6's **own** model/parameter list straight out of the POD Go Edit app you already have installed — every model the device can load, with its real parameter names and legal min/max ranges, not just the ones you happen to own presets for.
+`learned_blocks.json` only knows what you've personally uploaded. For everything else, the app uses Line 6's **own** model/parameter straight out of the POD Go Edit app, which contains every model the device can load, with its real parameter names and legal min/max ranges, not just the ones you happen to own presets for.
 
 ```bash
 python3 build_official_catalog.py
 ```
 
-This reads POD Go Edit's bundled model definitions (macOS default path baked in; pass a different `Contents/Resources` folder as an argument if yours differs, e.g. on Windows) and writes `official_catalog.json`: `model_id -> {category, name, params: {param_name: {min, max, default, kind}}}`. It's gitignored — the source data is Line 6's proprietary app content, not ours to redistribute, so each user regenerates it locally rather than it being committed.
+This reads POD Go Edit's bundled model definitions (macOS default path baked in; pass a different `Contents/Resources` folder as an argument if yours differs, e.g. on Windows) and writes `official_catalog.json`: `model_id -> {category, name, params: {param_name: {min, max, default, kind}}}`. It's gitignored because the source data is Line 6's proprietary app content, not ours to redistribute, so each user regenerates it locally rather than it being committed.
 
 Once generated, it upgrades the agent in three ways:
 
-- **Swap targets are guaranteed real.** `compact_catalog` prefers the official list over the hand-curated `PODGO_VERIFIED` subset, so every model offered as a swap target is one the device actually supports — no more, no less.
+- **Swap targets are guaranteed real.** `compact_catalog` prefers the official list over the hand-curated `PODGO_VERIFIED` subset, so every model offered as a swap target is one the device actually supports.
 - **Cross-category swaps get real defaults even without learned data.** A swap to a model you've never uploaded a preset for still gets populated with the device's own default parameter values instead of an empty block.
 - **`set_param` is validated against the real schema.** Unknown parameter names are rejected outright, and numeric values are clamped into the model's real min/max range before they ever reach the block.
 
-Nothing else changes if you skip this step — the app falls back to `PODGO_VERIFIED` and learned/general-knowledge parameter filling exactly as before.
+Nothing else changes if you skip this step as the app falls back to `PODGO_VERIFIED` and learned/general-knowledge parameter filling exactly as before.
 
 ---
 
@@ -182,7 +182,7 @@ A POD Go preset is JSON shaped like:
 
 Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple. Also owns the learned-blocks store: loads `learned_blocks.json` into `LEARNED_BLOCKS` at import, exposes `learned_params(model_id)` (which `patch_engine` uses to fill in real parameter values on a cross-category swap), and `save_learned_blocks(blocks)` to persist updates and swap in the new catalog in memory immediately.
 
-It loads `official_catalog.json` the same way, into `OFFICIAL_MODELS`, and exposes `official_params(model_id)` — the device's own `{param_name: {min, max, default, kind}}` schema, which `patch_engine` uses to validate and clamp `set_param` edits. Both files are optional; everything falls back gracefully to `{}` if they're missing.
+It loads `official_catalog.json` the same way, into `OFFICIAL_MODELS`, and exposes `official_params(model_id)`, the device's own `{param_name: {min, max, default, kind}}` schema, which `patch_engine` uses to validate and clamp `set_param` edits. Both files are optional; everything falls back gracefully to `{}` if they're missing.
 
 Hardware name mappings derived from the community-maintained [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT licensed) and the Line 6 Owner's Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
 
@@ -196,11 +196,11 @@ Hardware name mappings derived from the community-maintained [GhostNote17/HelixN
 python build_catalog.py /path/to/folder/of/pgp
 ```
 
-It reports every model id and parameter actually used across the folder, and writes `learned_blocks.json` in one pass — but unlike `learn_from_patch`, it **overwrites** the file with just that folder's contents rather than merging.
+It reports every model id and parameter actually used across the folder, and writes `learned_blocks.json` in one pass, but unlike `learn_from_patch`, it **overwrites** the file with just that folder's contents rather than merging.
 
 ### build_official_catalog.py — extract Line 6's own catalog
 
-A one-time (or "run it again after a POD Go Edit update") CLI script — not called automatically by `server.py`. Parses the `.models` files bundled inside the POD Go Edit app itself and writes `official_catalog.json`. See [Official model catalog](#official-model-catalog) above for what this unlocks and why it's gitignored.
+A one-time (or "run it again after a POD Go Edit update") CLI script, not called automatically by `server.py`. Parses the `.models` files bundled inside the POD Go Edit app itself and writes `official_catalog.json`. See [Official model catalog](#official-model-catalog) above for what this unlocks and why it's gitignored.
 
 ```bash
 python3 build_official_catalog.py
@@ -212,7 +212,7 @@ Why any of this helps: parameter tweaks and bypass toggles are always exact beca
 
 ## Model Reference
 
-Complete list of models available on the POD Go, sourced from the [official Line 6 model list](https://line6.com/podgo-models/). Without `official_catalog.json` generated, the agent can swap to a subset of these — see `PODGO_VERIFIED` in [model_db.py](model_db.py) for the current set, and run `build_catalog.py` on your own exports to expand it. Generating the [official catalog](#official-model-catalog) instead unlocks the full list above with real parameter schemas for every model.
+Complete list of models available on the POD Go, sourced from the [official Line 6 model list](https://line6.com/podgo-models/). Without `official_catalog.json` generated, the agent can swap to a subset of these, see `PODGO_VERIFIED` in [model_db.py](model_db.py) for the current set, and run `build_catalog.py` on your own exports to expand it. Generating the [official catalog](#official-model-catalog) instead unlocks the full list above with real parameter schemas for every model.
 
 <details>
 <summary>Browse all models</summary>
