@@ -32,11 +32,13 @@ Two modes:
 
 The model never writes a preset directly. It only proposes **edit operations**, such as setting a parameter, bypassing a block, swapping an amp model, setting tempo, and renaming the patch. The patch engine is the guardrail: it applies edits to your actual file and rejects anything that doesn't fit, such as a wrong parameter name, a bad value type, an amp swapped out for a reverb. The worst case is an edit that gets rejected and reported back to you.
 
-Three extra layers of reliability on top of that:
+Five extra layers of reliability on top of that:
 
 1. **JSON schema enforcement.** The Ollama call includes a formal schema for the `{"reply", "edits"}` response shape. The model physically cannot emit an unrecognized structure.
 2. **One retry with feedback.** If the model's output still doesn't parse into that shape (and it wasn't a deliberate empty response, like a clarifying question), the agent replays the bad output back to the model with a short correction and asks it to try again — once.
 3. **Repair pass.** If it's still off after the retry, `coerce_to_edits` maps whatever came back onto real blocks and parameters that exist, so the worst case is informative rejections rather than a silent no-op.
+4. **Rejection retry.** If the edits parsed fine but the patch engine rejected every single one (e.g. an amp swapped for a reverb), the agent shows the model the specific rejection reasons and asks for a corrected set of edits — once.
+5. **Param validation against the official catalog.** When [official_catalog.json](#official-model-catalog) is present, `set_param` rejects param names a model doesn't actually have and clamps numeric values into the device's real min/max range, instead of writing values the firmware would reject.
 
 Parameter tweaks and bypass toggles are always exact, because they only touch keys already in your file. Changes also cascade into snapshots that were in sync with the old value, so your existing snapshots stay coherent.
 
@@ -53,7 +55,7 @@ ollama pull llama3.1:8b      # solid default
 ollama serve                 # if it isn't already running
 ```
 
-> A model with an 8k+ context window is recommended, since the amp/cab/effects catalog is sizeable. The server requests `num_ctx: 8192` from Ollama automatically.
+> A model with a 16k+ context window is recommended — the full official POD Go catalog (~568 models, see [Official model catalog](#official-model-catalog) below) roughly doubles the size of the swap-target listing. The server requests `num_ctx: 16384` from Ollama automatically.
 
 **2. Install dependencies and start the server**
 
@@ -104,23 +106,43 @@ This scans every preset in the folder, reports all models and parameters your un
 
 None of this is required: without any learned data, cross-category swaps still work, just with the agent filling in parameter names from its own general knowledge rather than a verified template.
 
+### Official model catalog
+
+`learned_blocks.json` only knows what you've personally uploaded. For everything else, the app can pull Line 6's **own** model/parameter list straight out of the POD Go Edit app you already have installed — every model the device can load, with its real parameter names and legal min/max ranges, not just the ones you happen to own presets for.
+
+```bash
+python3 build_official_catalog.py
+```
+
+This reads POD Go Edit's bundled model definitions (macOS default path baked in; pass a different `Contents/Resources` folder as an argument if yours differs, e.g. on Windows) and writes `official_catalog.json`: `model_id -> {category, name, params: {param_name: {min, max, default, kind}}}`. It's gitignored — the source data is Line 6's proprietary app content, not ours to redistribute, so each user regenerates it locally rather than it being committed.
+
+Once generated, it upgrades the agent in three ways:
+
+- **Swap targets are guaranteed real.** `compact_catalog` prefers the official list over the hand-curated `PODGO_VERIFIED` subset, so every model offered as a swap target is one the device actually supports — no more, no less.
+- **Cross-category swaps get real defaults even without learned data.** A swap to a model you've never uploaded a preset for still gets populated with the device's own default parameter values instead of an empty block.
+- **`set_param` is validated against the real schema.** Unknown parameter names are rejected outright, and numeric values are clamped into the model's real min/max range before they ever reach the block.
+
+Nothing else changes if you skip this step — the app falls back to `PODGO_VERIFIED` and learned/general-knowledge parameter filling exactly as before.
+
 ---
 
 ## Repository layout
 
 ```
 .
-├── server.py              FastAPI app — sessions, upload, chat, download
-├── agent.py               Prompts Ollama, parses JSON, drives patch_engine
-├── patch_engine.py        Reads/writes .pgp, validates and applies edits
-├── model_db.py            POD Go model catalog (model ID → name → real hardware); PODGO_VERIFIED controls what the agent can propose
-├── build_catalog.py       Learns real models/params from your own presets
-├── template_newpreset.pgp Clean starting preset (replace with a real export if needed)
-├── learned_blocks.json    Written by build_catalog.py — not required, improves swaps
+├── server.py                  FastAPI app — sessions, upload, chat, download
+├── agent.py                   Prompts Ollama, parses JSON, drives patch_engine
+├── patch_engine.py            Reads/writes .pgp, validates and applies edits
+├── model_db.py                POD Go model catalog (model ID → name → real hardware); PODGO_VERIFIED controls what the agent can propose
+├── build_catalog.py           Learns real models/params from your own presets
+├── build_official_catalog.py  Extracts Line 6's own model/param list from POD Go Edit
+├── template_newpreset.pgp     Clean starting preset (replace with a real export if needed)
+├── learned_blocks.json        Written by build_catalog.py — not required, improves swaps
+├── official_catalog.json      Written by build_official_catalog.py — gitignored, regenerate locally
 ├── static/
-│   └── index.html         Browser UI
-├── samples/               Example presets (not used by the app)
-└── requirements.txt       fastapi, uvicorn, python-multipart
+│   └── index.html             Browser UI
+├── samples/                   Example presets (not used by the app)
+└── requirements.txt           fastapi, uvicorn, python-multipart
 ```
 
 ### server.py — local web server
@@ -133,11 +155,12 @@ On every upload, it also calls `build_catalog.learn_from_patch` to fold that pre
 
 Turns a natural-language request into validated edit ops by prompting a local model served by Ollama. The model only *proposes* edits; `patch_engine` validates and applies them.
 
-This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Three defenses:
+This module fixes a real-world failure: small models tend to invent their own JSON shape (e.g. `{block: {model_id: {params}}}`) instead of the edit grammar. Four defenses:
 
 1. A much stricter prompt with a worked example and an explicit anti-example.
 2. One retry with feedback: if the output doesn't parse into `{"reply","edits"}` and wasn't a deliberate empty response (e.g. a clarifying question), the agent shows the model its own bad output plus a short correction and asks it to try again — once.
 3. A repair pass (`coerce_to_edits`) that salvages whatever comes back by mapping it onto blocks/params that actually exist, so the worst case is informative rejections rather than a silent "done".
+4. A second, separate retry when the output *does* parse but `patch_engine` rejects every edit (e.g. an amp swapped for a reverb): the agent shows the model the specific rejection reasons and asks for a corrected set of edits — once.
 
 ### patch_engine.py — read, introspect, and safely edit `.pgp` presets
 
@@ -159,6 +182,8 @@ A POD Go preset is JSON shaped like:
 
 Maps internal model identifiers (the `@model` field inside a preset's blocks) to a `(category, display_name, real_hardware)` tuple. Also owns the learned-blocks store: loads `learned_blocks.json` into `LEARNED_BLOCKS` at import, exposes `learned_params(model_id)` (which `patch_engine` uses to fill in real parameter values on a cross-category swap), and `save_learned_blocks(blocks)` to persist updates and swap in the new catalog in memory immediately.
 
+It loads `official_catalog.json` the same way, into `OFFICIAL_MODELS`, and exposes `official_params(model_id)` — the device's own `{param_name: {min, max, default, kind}}` schema, which `patch_engine` uses to validate and clamp `set_param` edits. Both files are optional; everything falls back gracefully to `{}` if they're missing.
+
 Hardware name mappings derived from the community-maintained [GhostNote17/HelixNativePresets](https://github.com/GhostNote17/HelixNativePresets) project (MIT licensed) and the Line 6 Owner's Manuals. Not affiliated with or endorsed by Line 6 / Yamaha Guitar Group.
 
 ### build_catalog.py — learn from your own presets
@@ -173,13 +198,21 @@ python build_catalog.py /path/to/folder/of/pgp
 
 It reports every model id and parameter actually used across the folder, and writes `learned_blocks.json` in one pass — but unlike `learn_from_patch`, it **overwrites** the file with just that folder's contents rather than merging.
 
+### build_official_catalog.py — extract Line 6's own catalog
+
+A one-time (or "run it again after a POD Go Edit update") CLI script — not called automatically by `server.py`. Parses the `.models` files bundled inside the POD Go Edit app itself and writes `official_catalog.json`. See [Official model catalog](#official-model-catalog) above for what this unlocks and why it's gitignored.
+
+```bash
+python3 build_official_catalog.py
+```
+
 Why any of this helps: parameter tweaks and bypass toggles are always exact because they edit keys already in your file. Model swaps are the one fuzzy part, because a different model has a different parameter set with real firmware-specific key names nothing else in this app knows about. Feeding the agent real blocks harvested from your own presets makes swaps reliable too.
 
 ---
 
 ## Model Reference
 
-Complete list of models available on the POD Go, sourced from the [official Line 6 model list](https://line6.com/podgo-models/). The agent can swap to a subset of these — see `PODGO_VERIFIED` in [model_db.py](model_db.py) for the current set, and run `build_catalog.py` on your own exports to expand it.
+Complete list of models available on the POD Go, sourced from the [official Line 6 model list](https://line6.com/podgo-models/). Without `official_catalog.json` generated, the agent can swap to a subset of these — see `PODGO_VERIFIED` in [model_db.py](model_db.py) for the current set, and run `build_catalog.py` on your own exports to expand it. Generating the [official catalog](#official-model-catalog) instead unlocks the full list above with real parameter schemas for every model.
 
 <details>
 <summary>Browse all models</summary>

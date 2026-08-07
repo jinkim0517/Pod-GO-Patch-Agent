@@ -129,7 +129,9 @@ def build_messages(patch, user_message, history=None, build_mode=False):
         f'VALID BLOCK IDS (use only these): {id_list}\n'
         f'SIGNAL CHAIN (in order):\n' + "\n".join(surf_lines)
     )
-    catalog = model_db.compact_catalog(CORE_CATEGORIES)
+    # Build mode only offers models we've learned real params for, so every
+    # block the agent enables gets known-good values instead of guessed ones.
+    catalog = model_db.compact_catalog(CORE_CATEGORIES, learned_only=build_mode)
 
     sys = SYSTEM_PROMPT + "\n\n############  CATALOG (allowed swap_model ids)  ############\n" + catalog
     msgs = [{"role": "system", "content": sys}]
@@ -177,7 +179,9 @@ def call_ollama(messages, model=DEFAULT_MODEL, url=OLLAMA_URL, timeout=600):
         "model": model,
         "messages": messages,
         "stream": False,
-        "options": {"temperature": 0.2, "num_ctx": 8192},
+        # num_ctx bumped from 8192: the official POD Go catalog (~568 models,
+        # model_db.compact_catalog) roughly doubled the swap-target listing size.
+        "options": {"temperature": 0.2, "num_ctx": 16384},
         # Hard schema constraint that is far stronger than "format": "json".
         "format": _edits_schema(),
     }
@@ -329,8 +333,6 @@ def run_turn(patch, user_message, history=None, model=DEFAULT_MODEL, url=OLLAMA_
     surface = pe.editable_surface(patch)
     messages = build_messages(patch, user_message, history, build_mode=build_mode)
     raw = call_ollama(messages, model=model, url=url)
-    # Uncomment to debug exactly what the model returned:
-    # print("\n=== RAW MODEL OUTPUT ===\n", raw, "\n=======================\n")
     reply, edits = parse_model_output(raw, surface)
 
     # A conforming-but-empty response means the model deliberately chose not to
@@ -352,6 +354,32 @@ def run_turn(patch, user_message, history=None, model=DEFAULT_MODEL, url=OLLAMA_
     new_patch, results = pe.apply_edits(patch, edits)
     applied = [r["detail"] for r in results if r["ok"]]
     rejected = [r["detail"] for r in results if not r["ok"]]
+
+    # Every edit rejected is a decision problem, not a parsing one - e.g. the
+    # model tried to swap_model on a fixed-category block (Amp/Cab/Preamp).
+    # Give it one more shot with the specific rejection reasons instead of
+    # just dead-ending on an error the user can't act on.
+    if edits and not applied and rejected:
+        retried = True
+        feedback = (
+            "Every edit was rejected:\n" + "\n".join(f"- {r}" for r in rejected) +
+            "\n\nOnly Amp/Cab/Preamp blocks are fixed to their category. Any "
+            "Drive/Comp/Wah/EQ/Mod/Delay/Reverb/Pitch block can be freely "
+            "swapped to a different effect type - re-read CURRENT PRESET "
+            "above, pick a valid block id of the right kind, and reply with "
+            "the corrected {\"reply\", \"edits\"} JSON object."
+        )
+        retry_messages = messages + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": feedback},
+        ]
+        raw = call_ollama(retry_messages, model=model, url=url)
+        reply, edits = parse_model_output(raw, surface)
+        if edits:
+            new_patch, results = pe.apply_edits(patch, edits)
+            applied = [r["detail"] for r in results if r["ok"]]
+            rejected = [r["detail"] for r in results if not r["ok"]]
+
     out_patch = new_patch if applied else patch
 
     if build_mode and applied:

@@ -624,12 +624,33 @@ import re
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _LEARNED_BLOCKS_PATH = os.path.join(_HERE, "learned_blocks.json")
+_OFFICIAL_CATALOG_PATH = os.path.join(_HERE, "official_catalog.json")
 
 try:
     with open(_LEARNED_BLOCKS_PATH) as _f:
         LEARNED_BLOCKS = json.load(_f)
 except (FileNotFoundError, json.JSONDecodeError):
     LEARNED_BLOCKS = {}
+
+# Line 6's own model/parameter list, extracted from the POD Go Edit app via
+# build_official_catalog.py: model_id -> {category, name, params: {param_name:
+# {min, max, default, kind}}}. Optional - falls back to {} if never generated,
+# in which case swap targets are limited to the hand-curated PODGO_VERIFIED
+# set and set_param can't validate param names/ranges beyond what's already
+# on the block.
+try:
+    with open(_OFFICIAL_CATALOG_PATH) as _f:
+        OFFICIAL_MODELS = json.load(_f)
+except (FileNotFoundError, json.JSONDecodeError):
+    OFFICIAL_MODELS = {}
+
+
+def official_params(model_id):
+    """Real param schema for this model straight from POD Go Edit's own data:
+    {param_name: {min, max, default, kind}}, or None if we don't have it
+    (official_catalog.json missing, or model_id not in it)."""
+    info = OFFICIAL_MODELS.get(model_id)
+    return info["params"] if info else None
 
 
 def learned_params(model_id):
@@ -660,14 +681,24 @@ for _mid, (_cat, _name, _real) in MODEL_DB.items():
     _BY_CATEGORY.setdefault(_cat, []).append(_mid)
     _BY_NAME[_name.lower()] = _mid
 
-CATEGORIES = sorted(_BY_CATEGORY.keys())
+_OFFICIAL_BY_CATEGORY = {}
+for _mid, _info in OFFICIAL_MODELS.items():
+    _OFFICIAL_BY_CATEGORY.setdefault(_info["category"], []).append(_mid)
+
+CATEGORIES = sorted(set(_BY_CATEGORY) | set(_OFFICIAL_BY_CATEGORY))
 
 
 def lookup(model_id):
     """Return (category, display_name, real_hardware) for a model id.
-    Unknown ids are categorised by prefix so POD Go-only models still render."""
+    Checks the hand-curated MODEL_DB first (it carries the real-hardware
+    equivalent, e.g. "Fender Deluxe Reverb"), then the official POD Go Edit
+    catalog (no real-hardware mapping, but covers everything the device can
+    load), then falls back to prefix-guessing for anything in neither."""
     if model_id in MODEL_DB:
         return MODEL_DB[model_id]
+    if model_id in OFFICIAL_MODELS:
+        info = OFFICIAL_MODELS[model_id]
+        return (info["category"], info["name"], "")
     prefix_map = {
         "Amp": "Amp", "Preamp": "Preamp", "Cab": "Cab", "Dist": "Drive",
         "Delay": "Delay", "Reverb": "Reverb", "Compressor": "Comp",
@@ -688,7 +719,15 @@ def lookup(model_id):
 
 
 def models_in_category(category):
-    return list(_BY_CATEGORY.get(category, []))
+    """All known model ids in a category — hand-curated MODEL_DB entries
+    plus anything from the official POD Go Edit catalog, deduplicated."""
+    seen = list(_BY_CATEGORY.get(category, []))
+    have = set(seen)
+    for mid in _OFFICIAL_BY_CATEGORY.get(category, []):
+        if mid not in have:
+            seen.append(mid)
+            have.add(mid)
+    return seen
 
 
 def _tokens(s):
@@ -741,19 +780,34 @@ def find_model(query):
     return best
 
 
-def compact_catalog(categories=None):
+def compact_catalog(categories=None, learned_only=False):
     """Token-efficient listing for prompting the LLM, grouped by category.
-    Only includes PODGO_VERIFIED ids — POD Go-compatible model IDs with the
-    correct Mono/Stereo suffix that the device firmware expects."""
+
+    Prefers the official POD Go Edit catalog (build_official_catalog.py) when
+    present — it's the device's own model list, so every id offered is
+    guaranteed real and every swap gets a validated param schema (see
+    model_db.official_params). Falls back to the hand-curated PODGO_VERIFIED
+    subset of MODEL_DB when official_catalog.json hasn't been generated.
+
+    If learned_only is set, further restricts to model ids present in
+    LEARNED_BLOCKS (i.e. harvested from the user's own uploaded presets)."""
     cats = categories or CATEGORIES
     out = []
     for cat in cats:
-        ids = [mid for mid in _BY_CATEGORY.get(cat, []) if mid in PODGO_VERIFIED]
+        if OFFICIAL_MODELS:
+            ids = list(_OFFICIAL_BY_CATEGORY.get(cat, []))
+        else:
+            ids = [mid for mid in _BY_CATEGORY.get(cat, []) if mid in PODGO_VERIFIED]
+        if learned_only:
+            ids = [mid for mid in ids if mid in LEARNED_BLOCKS]
         if not ids:
             continue
         out.append(f"## {cat}")
         for mid in ids:
-            _c, name, real = MODEL_DB[mid]
+            if mid in MODEL_DB:
+                _c, name, real = MODEL_DB[mid]
+            else:
+                name, real = OFFICIAL_MODELS[mid]["name"], ""
             tail = f"  ({real})" if real else ""
             out.append(f"{mid}  |  {name}{tail}")
     return "\n".join(out)

@@ -287,6 +287,21 @@ def _cascade_enabled(tone, dsp_name, block_key, old_enabled, new_enabled):
             blocks[block_key] = new_enabled
 
 
+def _clamp_to_schema(value, schema):
+    """Clamp a numeric value into the official min/max range for its param,
+    if we have one. Leaves bools/strings and unknown params untouched."""
+    if not schema or schema.get("kind") not in ("float", "int"):
+        return value
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return value
+    lo, hi = schema.get("min"), schema.get("max")
+    if isinstance(lo, (int, float)) and value < lo:
+        return lo
+    if isinstance(hi, (int, float)) and value > hi:
+        return hi
+    return value
+
+
 def _coerce(old_value, new_value):
     """Coerce new_value to the type of the existing parameter value."""
     if isinstance(old_value, bool):
@@ -414,9 +429,14 @@ def apply_edits(patch, edits):
                         # for this exact model, instead of leaving it empty for
                         # the agent to guess param names from scratch.
                         learned = model_db.learned_params(new_id)
+                        official = model_db.official_params(new_id)
                         if learned:
                             block.update(learned)
                             params_note = " Params filled in from your learned catalog."
+                        elif official:
+                            block.update({name: info["default"] for name, info in official.items()
+                                          if info.get("default") is not None})
+                            params_note = " Params filled in from the official POD Go catalog."
                         else:
                             params_note = " Params cleared — set new ones for this effect type."
                     results.append(_ok(
@@ -429,18 +449,28 @@ def apply_edits(patch, edits):
                     if param.startswith("@"):
                         results.append(_fail(edit, f"'{param}' is a reserved field; use set_enabled instead"))
                         continue
+                    official = model_db.official_params(block.get("@model", ""))
+                    schema = official.get(param) if official else None
                     if param not in block:
                         # Allow creating params on blocks that were just cross-category
-                        # swapped (old params cleared, new ones not yet populated).
+                        # swapped (old params cleared, new ones not yet populated). If
+                        # we know this model's real param list, reject names it
+                        # doesn't have instead of writing junk onto the block.
+                        if official and param not in official:
+                            valid = ", ".join(sorted(official))
+                            results.append(_fail(edit, f"'{param}' isn't a real param on {block_key} — valid params: {valid}"))
+                            continue
                         val = edit["value"]
                         if not isinstance(val, (int, float, bool)):
                             results.append(_fail(edit, f"'{param}' doesn't exist on {block_key} and value must be numeric to create it"))
                             continue
+                        val = _clamp_to_schema(val, schema)
                         block[param] = float(val) if isinstance(val, (int, float)) else val
                         results.append(_ok(edit, f"{block_key}.{param} (new) → {block[param]}"))
                         continue
                     old = block[param]
-                    block[param] = _coerce(old, edit["value"])
+                    new_val = _clamp_to_schema(_coerce(old, edit["value"]), schema)
+                    block[param] = new_val
                     _cascade_param(_tone(p), dsp_name, block_key, param, old, block[param])
                     results.append(_ok(edit, f"{block_key}.{param} {old} → {block[param]}"))
             else:

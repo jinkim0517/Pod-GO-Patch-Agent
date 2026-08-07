@@ -3,3 +3,7 @@ __pycache__/
 .DS_Store
 .venv/
 venv/
+
+# Generated from Line 6's POD Go Edit app data (build_official_catalog.py) -
+# proprietary, regenerate locally rather than committing.
+official_catalog.json
