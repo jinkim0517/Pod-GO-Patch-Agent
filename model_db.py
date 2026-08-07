@@ -376,7 +376,7 @@ MODEL_DB = {
     # Amps and cabs use the same HD2_Amp* / HD2_Cab* IDs as Helix (no suffix).
     # EQ uses a different format entirely: HD2_EQ_STATIC_*Stereo.
     #
-    # Confirmed from real device exports (DH CHORUS CLOUD, TEMPLATE_TEST):
+    # Confirmed from real device exports:
     'HD2_WahUKWah846Stereo':           ('Wah',     'UK Wah 846',       'Vox V846'),
     'HD2_WahTeardropStereo':           ('Wah',     'Teardrop',         'Dunlop Cry Baby'),
     'HD2_CompressorKinkyCompMono':     ('Comp',    'Kinky Comp',       'Cali76 Compact'),
