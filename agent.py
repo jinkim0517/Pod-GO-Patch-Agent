@@ -129,8 +129,8 @@ def build_messages(patch, user_message, history=None, build_mode=False):
         f'VALID BLOCK IDS (use only these): {id_list}\n'
         f'SIGNAL CHAIN (in order):\n' + "\n".join(surf_lines)
     )
-    # Build mode only offers models we've learned real params for, so every
-    # block the agent enables gets known-good values instead of guessed ones.
+    # Build mode prefers models we've learned real params for, so an enabled
+    # block is more likely to get known-good values instead of guessed ones.
     catalog = model_db.compact_catalog(CORE_CATEGORIES, learned_only=build_mode)
 
     sys = SYSTEM_PROMPT + "\n\n############  CATALOG (allowed swap_model ids)  ############\n" + catalog

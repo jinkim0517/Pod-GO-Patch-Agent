@@ -789,8 +789,11 @@ def compact_catalog(categories=None, learned_only=False):
     model_db.official_params). Falls back to the hand-curated PODGO_VERIFIED
     subset of MODEL_DB when official_catalog.json hasn't been generated.
 
-    If learned_only is set, further restricts to model ids present in
-    LEARNED_BLOCKS (i.e. harvested from the user's own uploaded presets)."""
+    If learned_only is set, prefers model ids present in LEARNED_BLOCKS (i.e.
+    harvested from the user's own uploaded presets) within each category —
+    but only where that doesn't empty the category out. A category with zero
+    learned models still lists its full id set, so build mode never offers an
+    empty catalog just because nothing's been uploaded yet."""
     cats = categories or CATEGORIES
     out = []
     for cat in cats:
@@ -799,7 +802,8 @@ def compact_catalog(categories=None, learned_only=False):
         else:
             ids = [mid for mid in _BY_CATEGORY.get(cat, []) if mid in PODGO_VERIFIED]
         if learned_only:
-            ids = [mid for mid in ids if mid in LEARNED_BLOCKS]
+            learned_ids = [mid for mid in ids if mid in LEARNED_BLOCKS]
+            ids = learned_ids or ids
         if not ids:
             continue
         out.append(f"## {cat}")
