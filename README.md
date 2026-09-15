@@ -13,6 +13,26 @@ Two modes:
 
 ---
 
+## Walkthrough
+
+**Build** — describe a tone and the agent picks the amp, cab, and effects, then sets parameters on everything it enables. The right pane shows the resulting signal chain.
+
+![Build mode: the agent assembles a crunch tone with reverb from scratch, listing every parameter it set, with the resulting signal chain in the right pane](docs/images/build-mode.png)
+
+**Edit** — continue the conversation by giving feedback to the agent. It will apply adjustments to the patch it built based off your advice. Or, you can upload one of your own `.pgp` presets and say what to change. The conversation keeps going from there. Play it, come back with whatever you heard, and it picks up where it left off.
+
+![Edit mode: a preset uploaded from a .pgp file being adjusted by request, showing the existing signal chain in the right pane](docs/images/edit-mode.png)
+
+Vague complaints become precise moves — two parameter changes, not a rebuild:
+
+![A request to reduce reverb and add overdrive, producing two precise parameter changes](docs/images/iterate.png)
+
+Once it sounds right, download the `.pgp`, import it in POD Go Edit, and play through it:
+
+https://github.com/user-attachments/assets/823b90a0-905f-4c4e-90d5-345085dace22
+
+---
+
 ## How it works
 
 ```
