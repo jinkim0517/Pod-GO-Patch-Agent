@@ -146,6 +146,50 @@ Nothing else changes if you skip this step as the app falls back to `PODGO_VERIF
 
 ---
 
+## Tests
+
+575 tests, 99% statement coverage of the five application modules, full run in
+~1.5 seconds. Ollama is stubbed throughout, so the suite needs no local model,
+no network, and no POD Go attached.
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+pytest --cov --cov-report=term-missing
+```
+
+| Module | Statements | Coverage |
+|---|---|---|
+| `patch_engine.py` | 277 | 100% |
+| `agent.py` | 174 | 100% |
+| `server.py` | 100 | 100% |
+| `build_catalog.py` | 55 | 100% |
+| `model_db.py` | 115 | 96% |
+| **total** | **721** | **99%** |
+
+Most of the interesting coverage is about the two places this app can't trust
+its inputs:
+
+**A corpus of malformed LLM output.** 12 response shapes a local 7–8B model
+actually emits — fenced JSON, JSON buried in prose, a bare op, a bare array,
+blocks-as-keys with and without a nested model id, four different spellings of
+the model key, a half-hallucinated batch — each asserted to still produce at
+least one edit that applies. A matching set asserts the other half of the
+contract: unsalvageable output degrades to a reply and leaves the preset
+byte-identical.
+
+**Fuzzing the guardrail.** 180 randomized cases across malformed edit batches,
+random model output, and randomly truncated JSON, all asserting one invariant
+rather than expected values: whatever goes in, the preset that comes out still
+round-trips through the `.pgp` loader with its signal chain intact. This found a
+real bug — a `NaN` or `Infinity` value reached `json.dumps`, which writes those
+as bare literals that aren't valid JSON, so the exported `.pgp` would have been
+rejected by POD Go Edit. Non-finite values are now rejected at the edit boundary.
+
+Full breakdown in [tests/README.md](tests/README.md).
+
+---
+
 ## Repository layout
 
 ```
@@ -159,10 +203,12 @@ Nothing else changes if you skip this step as the app falls back to `PODGO_VERIF
 ├── template_newpreset.pgp     Clean starting preset (replace with a real export if needed)
 ├── learned_blocks.json        Written by build_catalog.py — not required, improves swaps
 ├── official_catalog.json      Written by build_official_catalog.py — gitignored, regenerate locally
+├── tests/                     575 tests, 99% coverage — see tests/README.md
 ├── static/
 │   └── index.html             Browser UI
 ├── samples/                   Example presets (not used by the app)
-└── requirements.txt           fastapi, uvicorn, python-multipart
+├── requirements.txt           fastapi, uvicorn, python-multipart
+└── requirements-dev.txt       adds pytest, pytest-cov, httpx
 ```
 
 ### server.py — local web server

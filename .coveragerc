@@ -1,0 +1,10 @@
+[run]
+source = patch_engine,agent,server,model_db,build_catalog
+omit = tests/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise AssertionError
+show_missing = True

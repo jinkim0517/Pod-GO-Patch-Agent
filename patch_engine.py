@@ -1,5 +1,6 @@
 import json
 import copy
+import math
 import model_db
 
 
@@ -302,6 +303,15 @@ def _clamp_to_schema(value, schema):
     return value
 
 
+def _finite(value):
+    """Guard against NaN/Infinity. json.dumps writes them as bare NaN/Infinity
+    literals, which aren't valid JSON — the resulting .pgp won't load in POD Go
+    Edit, and the value is meaningless on the device anyway."""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{value} isn't a usable value — give a real number")
+    return value
+
+
 def _coerce(old_value, new_value):
     """Coerce new_value to the type of the existing parameter value."""
     if isinstance(old_value, bool):
@@ -310,12 +320,12 @@ def _coerce(old_value, new_value):
         return bool(new_value)
     if isinstance(old_value, int) and not isinstance(old_value, bool):
         try:
-            return int(round(float(new_value)))
-        except (TypeError, ValueError):
+            return int(round(_finite(float(new_value))))
+        except (TypeError, ValueError, OverflowError):
             raise ValueError(f"expected a number, got {new_value!r}")
     if isinstance(old_value, float):
         try:
-            return float(new_value)
+            return _finite(float(new_value))
         except (TypeError, ValueError):
             raise ValueError(f"expected a number, got {new_value!r}")
     return new_value  # string params pass through
@@ -344,7 +354,7 @@ def apply_edits(patch, edits):
             if op == "set_tempo":
                 glob = _tone(p).setdefault("global", {})
                 old = glob.get("@tempo")
-                glob["@tempo"] = float(edit["value"])
+                glob["@tempo"] = _finite(float(edit["value"]))
                 results.append(_ok(edit, f"tempo {old} → {glob['@tempo']}"))
 
             elif op == "rename":
@@ -465,7 +475,9 @@ def apply_edits(patch, edits):
                             results.append(_fail(edit, f"'{param}' doesn't exist on {block_key} and value must be numeric to create it"))
                             continue
                         val = _clamp_to_schema(val, schema)
-                        block[param] = float(val) if isinstance(val, (int, float)) else val
+                        block[param] = (_finite(float(val))
+                                        if isinstance(val, (int, float)) and not isinstance(val, bool)
+                                        else val)
                         results.append(_ok(edit, f"{block_key}.{param} (new) → {block[param]}"))
                         continue
                     old = block[param]
